@@ -28,14 +28,10 @@ jobs:
           pip install --upgrade pip setuptools
           pip install "buildozer>=1.5.0" "cython<3.0.0"
 
+      # 修改重点：使用 Ubuntu 虚拟机自带的 SDK 接受协议，不调用未初始化的 buildozer sdkmanager
       - name: Accept Android SDK Licenses
         run: |
-          buildozer android showsdkversion || true
-          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
-          yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          fi
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Build APK
         run: buildozer -v android debug
