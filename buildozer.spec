@@ -4,7 +4,7 @@ package.name = gomoku
 package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
-version = 0.1
+version = 0.2
 
 # 锁定 requirements
 requirements = python3,kivy
