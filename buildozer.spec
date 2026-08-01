@@ -5,7 +5,10 @@ package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
-requirements = python3,kivy
+
+# 关键修改：锁定底层 python3 为稳定版本，防止自动下载 Python 3.14 导致 openssl/crypto 编译崩溃
+requirements = python3==3.10.12,kivy
+
 orientation = portrait
 fullscreen = 0
 
@@ -15,7 +18,7 @@ android.minapi = 21
 android.ndk = 25b
 android.accept_sdk_license = True
 android.build_tools_version = 34.0.0
-# 关键修复：只保留 arm64-v8a 架构，解决 armv7a 交叉编译报错并大幅提速
+# 只保留 arm64-v8a 现代架构，速度最快
 android.archs = arm64-v8a
 android.permissions = 
 
