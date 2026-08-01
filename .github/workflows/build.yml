@@ -22,12 +22,8 @@ jobs:
         run: |
           pip3 install --upgrade buildozer cython==0.29.33
 
-      - name: Build APK (fix SDK license issue)
-        run: |
-          buildozer -v android debug || true
-          SDK_PATH=~/.buildozer/android/platform/android-sdk
-          yes | $SDK_PATH/cmdline-tools/latest/bin/sdkmanager --licenses
-          buildozer -v android debug
+      - name: Build APK
+        run: buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
