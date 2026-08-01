@@ -11,15 +11,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          command: buildozer android debug
-          buildozer_version: stable
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip openjdk-17-jdk python3-pip python3-virtualenv \
+            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
+            libffi-dev libssl-dev automake autopoint gettext
+
+      - name: Install buildozer and cython
+        run: |
+          pip3 install --upgrade buildozer cython==0.29.33
+
+      - name: Build APK
+        run: |
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: gomoku-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
