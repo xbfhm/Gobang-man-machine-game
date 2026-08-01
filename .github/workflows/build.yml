@@ -21,20 +21,29 @@ jobs:
           sudo apt update
           sudo apt install -y git zip unzip openjdk-17-jdk python3-pip python3-virtualenv \
             autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
-            libffi-dev libssl-dev automake autopoint gettext
+            libffi-dev libssl-dev automake autopoint gettext ccache
 
       - name: Install buildozer and cython
         run: |
           pip install --upgrade pip setuptools
           pip install "buildozer>=1.5.0" "cython<3.0.0"
 
-      # 修改重点：使用 Ubuntu 虚拟机自带的 SDK 接受协议，不调用未初始化的 buildozer sdkmanager
       - name: Accept Android SDK Licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Build APK
-        run: buildozer -v android debug
+        run: |
+          # 加上日志捕获，方便查看报错
+          buildozer -v android debug 2>&1 | tee build_output.log
+
+      # 如果失败，自动将编译日志上传为 Artifact，方便下载查看最底层的 Error
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build_output.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
