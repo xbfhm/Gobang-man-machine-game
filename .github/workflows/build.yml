@@ -20,36 +20,45 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y git zip unzip openjdk-17-jdk python3-pip python3-virtualenv \
-            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
-            libffi-dev libssl-dev automake autopoint gettext ccache
+            build-essential autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 libtinfo6 cmake libffi-dev libssl-dev automake autopoint gettext ccache
+
+      # 缓存 buildozer 下载的 Android SDK/NDK/Gradle 等,避免每次全量重下,显著加速构建
+      - name: Cache buildozer global directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
 
       - name: Install buildozer and cython
         run: |
           pip install --upgrade pip setuptools
           pip install "buildozer>=1.5.0" "cython<3.0.0"
 
-      - name: Accept Android SDK Licenses
+      # 原来的 sdkmanager --licenses 在此时 ANDROID_HOME 还未设置、cmdline-tools 也未安装,
+      # 实际上是空跑的(被 `|| true` 吞掉了错误)。真正生效的方式是让 buildozer 自己在
+      # 首次下载 SDK 时自动同意 license,通过 buildozer.spec 里的开关来做。
+      - name: Ensure Android SDK license auto-accept is enabled
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          if grep -q '^android.accept_sdk_license' buildozer.spec; then
+            sed -i 's/^android.accept_sdk_license.*/android.accept_sdk_license = True/' buildozer.spec
+          else
+            echo 'android.accept_sdk_license = True' >> buildozer.spec
+          fi
 
       - name: Build APK
         run: |
           buildozer -v android debug 2>&1 | tee build_log.txt
 
       - name: Locate and copy APKs
-        if: success()
         run: |
           mkdir -p bin
-          find . -name "*.apk" -exec cp {} bin/ \;
+          find . -name "*.apk" ! -path "./bin/*" -exec cp {} bin/ \;
           ls -la bin/
-
-      # 如果失败，自动将日志上传到 Summary 页面底部的 Artifacts
-      - name: Upload Build Log on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: failure-build-log
-          path: build_log.txt
 
       - name: Upload APK
         if: success()
@@ -57,3 +66,12 @@ jobs:
         with:
           name: gomoku-apk
           path: bin/*.apk
+
+      # 改成 always() 而不是只在 failure() 时上传:即使流程整体"成功"但没生成 APK,
+      # 也能看到日志排查原因;失败时更是必须要有日志。
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build_log.txt
