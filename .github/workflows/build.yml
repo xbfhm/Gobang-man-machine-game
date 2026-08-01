@@ -34,15 +34,25 @@ jobs:
 
       - name: Build APK
         run: |
-          buildozer -v android debug
+          buildozer -v android debug 2>&1 | tee build_log.txt
 
       - name: Locate and copy APKs
+        if: success()
         run: |
           mkdir -p bin
           find . -name "*.apk" -exec cp {} bin/ \;
           ls -la bin/
 
+      # 如果失败，自动将日志上传到 Summary 页面底部的 Artifacts
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-build-log
+          path: build_log.txt
+
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: gomoku-apk
