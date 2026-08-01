@@ -34,16 +34,14 @@ jobs:
 
       - name: Build APK
         run: |
-          # 加上日志捕获，方便查看报错
-          buildozer -v android debug 2>&1 | tee build_output.log
+          buildozer -v android debug
 
-      # 如果失败，自动将编译日志上传为 Artifact，方便下载查看最底层的 Error
-      - name: Upload Build Log on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build_output.log
+      # 关键新增：检查并把找到的所有 APK 文件搜罗出来放到 bin 目录
+      - name: Locate and copy APKs
+        run: |
+          mkdir -p bin
+          find . -name "*.apk" -exec cp {} bin/ \;
+          ls -la bin/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
