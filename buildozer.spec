@@ -13,7 +13,7 @@ orientation = portrait
 fullscreen = 0
 
 # Android 配置
-android.api = 33
+android.api = 34
 android.minapi = 21
 android.ndk = 25b
 android.accept_sdk_license = True
