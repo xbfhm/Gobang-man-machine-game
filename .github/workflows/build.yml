@@ -14,27 +14,14 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt update
-          sudo apt install -y git zip unzip openjdk-17-jdk python3-pip python3-virtualenv wget curl \
+          sudo apt install -y git zip unzip openjdk-17-jdk python3-pip python3-virtualenv \
             autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
             libffi-dev libssl-dev automake autopoint gettext
 
+      # 重点：锁定buildozer 1.5.0稳定旧版本，新版存在读取spec配置失效bug
       - name: Install buildozer and cython
         run: |
-          pip3 install --upgrade buildozer cython==0.29.33
-
-      # 先初始化SDK目录，提前下载cmdline-tools并接受许可证
-      - name: Prepare Android SDK & accept licenses
-        run: |
-          SDK_ROOT=~/.buildozer/android/platform/android-sdk
-          mkdir -p $SDK_ROOT/cmdline-tools
-          cd $SDK_ROOT/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip commandlinetools-linux-11076708_latest.zip -d latest
-          rm commandlinetools-linux-11076708_latest.zip
-          # 自动接受全部许可
-          yes | $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-          # 预先安装指定版本build-tools，强制34.0.0
-          $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-33"
+          pip3 install buildozer==1.5.0 cython==0.29.33
 
       - name: Build APK
         run: buildozer -v android debug
