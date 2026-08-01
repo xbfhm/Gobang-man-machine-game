@@ -1,4 +1,4 @@
-Name: Build APK
+name: Build APK
 
 on:
   workflow_dispatch:
@@ -11,6 +11,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
       - name: Install system dependencies
         run: |
           sudo apt update
@@ -18,18 +23,14 @@ jobs:
             autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake \
             libffi-dev libssl-dev automake autopoint gettext
 
-      # 锁定 buildozer 1.5.0 和 cython
       - name: Install buildozer and cython
         run: |
-          pip3 install buildozer==1.5.0 cython==0.29.33
+          pip install --upgrade pip setuptools
+          pip install "buildozer>=1.5.0" "cython<3.0.0"
 
-      # 自动接受 Android SDK 许可证
       - name: Accept Android SDK Licenses
         run: |
-          # 触发 buildozer 下载 SDK 基础环境
           buildozer android showsdkversion || true
-          
-          # 强行接受 SDK 目录下所有 license 协议
           mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
           yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
           if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
