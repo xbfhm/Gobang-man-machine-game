@@ -2,8 +2,6 @@
 
 from kivy.app import App
 from kivy.core.window import Window
-from kivy.resources import resource_add_path
-from kivy.core.text import LabelBase
 
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
@@ -11,34 +9,14 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 
-from kivy.graphics import (
-    Color,
-    Line,
-    Ellipse,
-    Rectangle
-)
-
+from kivy.graphics import Color, Line, Ellipse, Rectangle
 from kivy.clock import Clock
 
 import random
 
 
 # ==========================
-# 中文字体
-# ==========================
-
-# 把字体文件放到程序同目录
-# 推荐 NotoSansCJK-Regular.ttc
-
-LabelBase.register(
-    name="Chinese",
-    fn_regular="NotoSansCJK-Regular.ttc"
-)
-
-
-
-# ==========================
-# 游戏参数
+# 游戏设置
 # ==========================
 
 BOARD_SIZE = 19
@@ -54,12 +32,12 @@ AI_LEVEL = "中"
 
 
 # ==========================
-# 胜负判断
+# 判断胜利
 # ==========================
 
 def check_win(board,row,col,who):
 
-    directions=[
+    directions = [
         (1,0),
         (0,1),
         (1,1),
@@ -77,6 +55,7 @@ def check_win(board,row,col,who):
         r=row+dr
         c=col+dc
 
+
         while (
             0<=r<BOARD_SIZE
             and
@@ -84,7 +63,9 @@ def check_win(board,row,col,who):
             and
             board[r][c]==who
         ):
+
             cells.append((r,c))
+
             r+=dr
             c+=dc
 
@@ -101,16 +82,23 @@ def check_win(board,row,col,who):
             and
             board[r][c]==who
         ):
+
             cells.append((r,c))
+
             r-=dr
             c-=dc
 
 
+
         if len(cells)>=5:
+
             return True,cells
 
 
+
     return False,None
+
+
 
 
 
@@ -118,22 +106,18 @@ def check_win(board,row,col,who):
 # AI评分
 # ==========================
 
+SCORES={
 
-PATTERN_SCORES={
+    "five":100000,
 
-    "win":100000,
+    "four":10000,
 
-    "open4":10000,
-
-    "four":3000,
-
-    "open3":1000,
-
-    "three":300,
+    "three":1000,
 
     "two":100
 
 }
+
 
 
 
@@ -145,35 +129,38 @@ def line_score(cells):
 
 
     if "OOOOO" in s:
-        score+=PATTERN_SCORES["win"]
 
-
-    if ".OOOO." in s:
-        score+=PATTERN_SCORES["open4"]
+        score+=SCORES["five"]
 
 
     if (
+        ".OOOO." in s
+        or
         "OOOO." in s
         or
         ".OOOO" in s
     ):
-        score+=PATTERN_SCORES["four"]
 
+        score+=SCORES["four"]
 
-    if ".OOO." in s:
-        score+=PATTERN_SCORES["open3"]
 
 
     if (
-        "OOO." in s
+        ".OOO." in s
         or
         ".OOO" in s
+        or
+        "OOO."
+        in s
     ):
-        score+=PATTERN_SCORES["three"]
+
+        score+=SCORES["three"]
+
 
 
     if ".OO." in s:
-        score+=PATTERN_SCORES["two"]
+
+        score+=SCORES["two"]
 
 
     return score
@@ -182,13 +169,10 @@ def line_score(cells):
 
 
 
+
 def evaluate_point(board,row,col,who):
 
-    opponent = (
-        PLAYER
-        if who==AI
-        else AI
-    )
+    enemy = PLAYER if who==AI else AI
 
 
     def get_line(dr,dc,target):
@@ -209,23 +193,31 @@ def evaluate_point(board,row,col,who):
             ):
 
                 if i==0:
+
                     cells.append("O")
 
                 elif board[r][c]==target:
+
                     cells.append("O")
 
                 elif board[r][c]==EMPTY:
+
                     cells.append(".")
 
 
                 else:
+
                     cells.append("X")
 
+
             else:
+
                 cells.append("X")
 
 
         return cells
+
+
 
 
 
@@ -239,21 +231,17 @@ def evaluate_point(board,row,col,who):
         (1,-1)
     ]:
 
-        #进攻
 
-        total+=line_score(
+        total += line_score(
             get_line(dr,dc,who)
         )
 
 
-        #防守
-
-        total+=int(
+        total += int(
             line_score(
-                get_line(dr,dc,opponent)
+                get_line(dr,dc,enemy)
             )
-            *
-            0.9
+            *0.9
         )
 
 
@@ -263,10 +251,10 @@ def evaluate_point(board,row,col,who):
 
 
 
-# ==========================
-# 候选位置
-# ==========================
 
+# ==========================
+# 搜索附近位置
+# ==========================
 
 def candidate_moves(board):
 
@@ -299,12 +287,15 @@ def candidate_moves(board):
                             and
                             board[nr][nc]==EMPTY
                         ):
+
                             result.add(
                                 (nr,nc)
                             )
 
 
+
     if not has:
+
         return [
             (
                 BOARD_SIZE//2,
@@ -323,29 +314,30 @@ def candidate_moves(board):
 # AI走棋
 # ==========================
 
-
 def ai_move(board):
-
 
     moves=candidate_moves(board)
 
 
+    # 简单模式随机
 
-    # 低难度
     if AI_LEVEL=="低":
 
         return random.choice(moves)
 
 
 
-    # 高难度：先检查必胜
+    # 高难度先判断胜负
 
     if AI_LEVEL=="高":
 
 
+        # AI能赢直接赢
+
         for r,c in moves:
 
             board[r][c]=AI
+
 
             win,_=check_win(
                 board,
@@ -354,20 +346,23 @@ def ai_move(board):
                 AI
             )
 
+
             board[r][c]=EMPTY
 
 
             if win:
+
                 return r,c
 
 
 
-        # 防止玩家赢
 
+        # 阻止玩家
 
         for r,c in moves:
 
             board[r][c]=PLAYER
+
 
             win,_=check_win(
                 board,
@@ -376,23 +371,25 @@ def ai_move(board):
                 PLAYER
             )
 
+
             board[r][c]=EMPTY
 
 
             if win:
+
                 return r,c
 
 
 
 
-    # 中/高评分
 
 
     best=-1
-    pos=None
+    best_pos=None
 
 
     for r,c in moves:
+
 
         score=evaluate_point(
             board,
@@ -405,11 +402,13 @@ def ai_move(board):
         if score>best:
 
             best=score
-            pos=(r,c)
+
+                      best_pos=(r,c)
 
 
-    return pos
-# ==========================
+
+    return best_pos
+   # ==========================
 # 棋盘控件
 # ==========================
 
@@ -446,8 +445,6 @@ class BoardWidget(Widget):
 
 
 
-    # 棋格大小
-
     def cell_size(self):
 
         return min(
@@ -457,8 +454,6 @@ class BoardWidget(Widget):
 
 
 
-    # 棋盘原点
-
     def grid_origin(self):
 
         cs=self.cell_size()
@@ -467,18 +462,18 @@ class BoardWidget(Widget):
             self.width-cs*(BOARD_SIZE-1)
         )/2
 
-
         oy=self.y+(
             self.height-cs*(BOARD_SIZE-1)
         )/2
-
 
         return ox,oy
 
 
 
 
-    # 绘制
+    # ======================
+    # 绘制棋盘
+    # ======================
 
     def redraw(self,*args):
 
@@ -492,7 +487,7 @@ class BoardWidget(Widget):
         with self.canvas:
 
 
-            # 棋盘颜色
+            # 背景
 
             Color(
                 0.85,
@@ -501,12 +496,10 @@ class BoardWidget(Widget):
                 1
             )
 
-
             Rectangle(
                 pos=self.pos,
                 size=self.size
             )
-
 
 
             # 棋盘线
@@ -550,11 +543,13 @@ class BoardWidget(Widget):
 
                 for c in range(BOARD_SIZE):
 
-                    v=self.board[r][c]
+                    value=self.board[r][c]
 
 
-                    if v==EMPTY:
+                    if value==EMPTY:
+
                         continue
+
 
 
                     x=ox+c*cs
@@ -565,7 +560,7 @@ class BoardWidget(Widget):
 
 
 
-                    if v==PLAYER:
+                    if value==PLAYER:
 
                         Color(
                             0.05,
@@ -598,14 +593,15 @@ class BoardWidget(Widget):
 
 
 
-            # 获胜高亮
+
+            # 胜利高亮
 
             if self.winning_cells:
 
 
                 Color(
                     1,
-                    0.82,
+                    0.8,
                     0.1,
                     1
                 )
@@ -631,7 +627,10 @@ class BoardWidget(Widget):
 
 
 
-    # 点击棋盘
+
+    # ======================
+    # 玩家落子
+    # ======================
 
     def on_touch_down(self,touch):
 
@@ -651,11 +650,9 @@ class BoardWidget(Widget):
         ox,oy=self.grid_origin()
 
 
-
         col=round(
             (touch.x-ox)/cs
         )
-
 
         row=round(
             (touch.y-oy)/cs
@@ -678,7 +675,6 @@ class BoardWidget(Widget):
 
 
 
-        # 玩家落子
 
         self.board[row][col]=PLAYER
 
@@ -711,17 +707,6 @@ class BoardWidget(Widget):
 
 
 
-        if self.is_full():
-
-            self.finish_game(
-                None,
-                None
-            )
-
-            return
-
-
-
         self.set_status(
             "AI思考中...",
             (1,1,1,1)
@@ -729,7 +714,6 @@ class BoardWidget(Widget):
 
 
         self.awaiting_ai=True
-
 
 
         self.ai_event=Clock.schedule_once(
@@ -741,11 +725,14 @@ class BoardWidget(Widget):
 
 
 
+    # ======================
     # AI落子
+    # ======================
 
     def do_ai_move(self,dt):
 
         self.awaiting_ai=False
+
 
         pos=ai_move(
             self.board
@@ -753,7 +740,9 @@ class BoardWidget(Widget):
 
 
         if pos is None:
+
             return
+
 
 
         r,c=pos
@@ -797,24 +786,11 @@ class BoardWidget(Widget):
 
 
 
-
-    def is_full(self):
-
-        return all(
-            self.board[r][c]!=EMPTY
-            for r in range(BOARD_SIZE)
-            for c in range(BOARD_SIZE)
-        )
-
-
-
-
     def set_status(self,text,color):
 
         self.status_label.text=text
 
         self.status_label.color=color
-
 
 
 
@@ -858,7 +834,6 @@ class BoardWidget(Widget):
 
 
 
-    # 撤回
 
     def retract_last(self):
 
@@ -872,6 +847,7 @@ class BoardWidget(Widget):
             self.ai_event.cancel()
 
 
+
         if self.move_history:
 
             r,c,w=self.move_history.pop()
@@ -879,7 +855,9 @@ class BoardWidget(Widget):
             self.board[r][c]=EMPTY
 
 
+
         self.awaiting_ai=False
+
 
         self.redraw()
 
@@ -893,7 +871,6 @@ class BoardWidget(Widget):
 
 
 
-    # 悔棋
 
     def undo_move(self):
 
@@ -928,7 +905,6 @@ class BoardWidget(Widget):
 
 
 
-    # 重置
 
     def reset(self):
 
@@ -952,7 +928,8 @@ class BoardWidget(Widget):
         self.set_status(
             "轮到你了（黑棋）",
             (1,1,1,1)
-        )    # ==========================
+        ) 
+        # ==========================
 # 按钮样式
 # ==========================
 
@@ -960,12 +937,12 @@ def flat_button(text,color):
 
     return Button(
         text=text,
-        font_name="Chinese",
         background_normal="",
         background_color=color,
         color=(1,1,1,1),
         font_size=16
     )
+
 
 
 
@@ -998,18 +975,10 @@ class GomokuApp(App):
 
 
 
-        # 标题
-
         title=Label(
-
             text="五子棋人机对战",
-
-            font_name="Chinese",
-
             font_size=25,
-
             size_hint=(1,0.07),
-
             color=(
                 1,
                 0.85,
@@ -1020,23 +989,13 @@ class GomokuApp(App):
 
 
 
-        # 状态
-
         status=Label(
-
             text="轮到你了（黑棋）",
-
-            font_name="Chinese",
-
             font_size=18,
-
             size_hint=(1,0.06)
-
         )
 
 
-
-        # 棋盘
 
         board=BoardWidget(
             status,
@@ -1045,34 +1004,31 @@ class GomokuApp(App):
 
 
 
-        # =====================
-        # 弹窗
-        # =====================
-
+        # ======================
+        # 胜利弹窗
+        # ======================
 
         def show_result(winner):
 
-
             if winner==PLAYER:
 
-                msg="恭喜，你赢了！"
+                title_text="胜利"
 
-                title="胜利"
+                msg="恭喜，你赢了！"
 
 
             elif winner==AI:
 
-                msg="AI赢了，再挑战一次吧"
+                title_text="失败"
 
-                title="失败"
+                msg="AI赢了，再挑战一次吧"
 
 
             else:
 
+                title_text="平局"
+
                 msg="双方打平"
-
-                title="平局"
-
 
 
 
@@ -1083,43 +1039,32 @@ class GomokuApp(App):
             )
 
 
-
             label=Label(
-
                 text=msg,
-
-                font_name="Chinese",
-
                 font_size=18
             )
 
 
-            btn=flat_button(
-
+            again=flat_button(
                 "重新开始",
-
                 (
                     0.2,
                     0.6,
                     0.3,
                     1
                 )
-
             )
 
 
             box.add_widget(label)
 
-            box.add_widget(btn)
+            box.add_widget(again)
 
 
 
             popup=Popup(
-
-                title=title,
-
+                title=title_text,
                 content=box,
-
                 size_hint=(
                     0.8,
                     0.35
@@ -1127,8 +1072,7 @@ class GomokuApp(App):
             )
 
 
-
-            btn.bind(
+            again.bind(
                 on_release=lambda x:
                 (
                     board.reset(),
@@ -1141,32 +1085,25 @@ class GomokuApp(App):
 
 
 
-
         board.on_win_callback=show_result
 
 
 
 
 
-        # =====================
+        # ======================
         # 底部按钮
-        # =====================
-
+        # ======================
 
         row=BoxLayout(
-
             size_hint=(1,0.07),
-
             spacing=5
-
         )
 
 
 
         undo=flat_button(
-
             "悔棋",
-
             (
                 0.3,
                 0.4,
@@ -1176,11 +1113,8 @@ class GomokuApp(App):
         )
 
 
-
         retract=flat_button(
-
             "撤回",
-
             (
                 0.5,
                 0.5,
@@ -1190,11 +1124,19 @@ class GomokuApp(App):
         )
 
 
+        level=flat_button(
+            "难度：中",
+            (
+                0.4,
+                0.4,
+                0.5,
+                1
+            )
+        )
+
 
         restart=flat_button(
-
             "重新开始",
-
             (
                 0.6,
                 0.3,
@@ -1205,22 +1147,7 @@ class GomokuApp(App):
 
 
 
-        level=flat_button(
-
-            "难度：中",
-
-            (
-                0.4,
-                0.4,
-                0.5,
-                1
-            )
-        )
-
-
-
-
-        # 难度循环
+        # 难度切换
 
         def change_level(*args):
 
@@ -1242,7 +1169,7 @@ class GomokuApp(App):
             index+=1
 
 
-            if index>=3:
+            if index>=len(levels):
 
                 index=0
 
@@ -1302,6 +1229,7 @@ class GomokuApp(App):
 
 
         return root
+
 
 
 
