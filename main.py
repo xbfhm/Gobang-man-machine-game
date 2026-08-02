@@ -2,6 +2,7 @@
 
 from kivy.app import App
 from kivy.core.window import Window
+from kivy.core.text import LabelBase
 
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
@@ -9,15 +10,32 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 
-from kivy.graphics import Color, Line, Ellipse, Rectangle
+from kivy.graphics import (
+    Color,
+    Line,
+    Ellipse,
+    Rectangle
+)
+
 from kivy.clock import Clock
 
 import random
 
 
-# ==========================
+# =========================
+# 中文字体 (.otf)
+# =========================
+
+LabelBase.register(
+    name="Chinese",
+    fn_regular="NotoSansCJK-Regular.otf"
+)
+
+
+
+# =========================
 # 游戏设置
-# ==========================
+# =========================
 
 BOARD_SIZE = 19
 
@@ -26,18 +44,18 @@ PLAYER = 1
 AI = 2
 
 
-# AI难度
+# 当前难度
 AI_LEVEL = "中"
 
 
 
-# ==========================
+# =========================
 # 判断胜利
-# ==========================
+# =========================
 
-def check_win(board, row, col, who):
+def check_win(board,row,col,who):
 
-    directions = [
+    directions=[
         (1,0),
         (0,1),
         (1,1),
@@ -45,115 +63,137 @@ def check_win(board, row, col, who):
     ]
 
 
-    for dr, dc in directions:
+    for dr,dc in directions:
 
-        cells = [(row,col)]
+        cells=[
+            (row,col)
+        ]
 
 
-        r = row + dr
-        c = col + dc
+        # 正方向
 
+        r=row+dr
+        c=col+dc
 
         while (
-            0 <= r < BOARD_SIZE
+            0<=r<BOARD_SIZE
             and
-            0 <= c < BOARD_SIZE
+            0<=c<BOARD_SIZE
             and
-            board[r][c] == who
+            board[r][c]==who
         ):
 
             cells.append((r,c))
 
-            r += dr
-            c += dc
+            r+=dr
+            c+=dc
 
 
 
-        r = row - dr
-        c = col - dc
+        # 反方向
+
+        r=row-dr
+        c=col-dc
 
 
         while (
-            0 <= r < BOARD_SIZE
+            0<=r<BOARD_SIZE
             and
-            0 <= c < BOARD_SIZE
+            0<=c<BOARD_SIZE
             and
-            board[r][c] == who
+            board[r][c]==who
         ):
 
             cells.append((r,c))
 
-            r -= dr
-            c -= dc
+            r-=dr
+            c-=dc
 
 
 
-        if len(cells) >= 5:
+        if len(cells)>=5:
 
-            return True, cells
-
-
-    return False, None
+            return True,cells
 
 
 
+    return False,None
 
 
-# ==========================
-# AI评分
-# ==========================
 
-SCORES = {
 
-    "five":100000,
+# =========================
+# AI棋型评分
+# =========================
 
-    "four":10000,
 
-    "three":1000,
+SCORES={
 
-    "two":100
+    "FIVE":100000,
+
+    "OPEN4":10000,
+
+    "FOUR":3000,
+
+    "OPEN3":1000,
+
+    "THREE":300,
+
+    "TWO":100
 
 }
 
 
 
-def line_score(cells):
+def pattern_score(cells):
 
-    s = "".join(cells)
+    s="".join(cells)
 
-    score = 0
+    score=0
 
 
 
     if "OOOOO" in s:
 
-        score += SCORES["five"]
+        score+=SCORES["FIVE"]
+
+
+
+    if ".OOOO." in s:
+
+        score+=SCORES["OPEN4"]
 
 
 
     if (
-        ".OOOO." in s
-        or ".OOOO" in s
-        or "OOOO." in s
+        "OOOO." in s
+        or
+        ".OOOO" in s
     ):
 
-        score += SCORES["four"]
+        score+=SCORES["FOUR"]
+
+
+
+    if ".OOO." in s:
+
+        score+=SCORES["OPEN3"]
 
 
 
     if (
-        ".OOO." in s
-        or ".OOO" in s
-        or "OOO." in s
+        "OOO." in s
+        or
+        ".OOO" in s
     ):
 
-        score += SCORES["three"]
+        score+=SCORES["THREE"]
 
 
 
     if ".OO." in s:
 
-        score += SCORES["two"]
+        score+=SCORES["TWO"]
 
 
 
@@ -163,15 +203,18 @@ def line_score(cells):
 
 
 
-def evaluate_point(board,row,col,who):
+def evaluate(board,row,col,who):
 
-    enemy = PLAYER if who == AI else AI
+    enemy = PLAYER if who==AI else AI
+
+
+    total=0
 
 
 
     def get_line(dr,dc,target):
 
-        cells=[]
+        result=[]
 
 
         for i in range(-4,5):
@@ -180,44 +223,39 @@ def evaluate_point(board,row,col,who):
             c=col+dc*i
 
 
+
             if (
-                0 <= r < BOARD_SIZE
+                0<=r<BOARD_SIZE
                 and
-                0 <= c < BOARD_SIZE
+                0<=c<BOARD_SIZE
             ):
 
 
                 if i==0:
 
-                    cells.append("O")
-
+                    result.append("O")
 
                 elif board[r][c]==target:
 
-                    cells.append("O")
-
+                    result.append("O")
 
                 elif board[r][c]==EMPTY:
 
-                    cells.append(".")
+                    result.append(".")
 
 
                 else:
 
-                    cells.append("X")
-
+                    result.append("X")
 
             else:
 
-                cells.append("X")
-
-
-        return cells
+                result.append("X")
 
 
 
+        return result
 
-    total=0
 
 
     for dr,dc in [
@@ -227,18 +265,23 @@ def evaluate_point(board,row,col,who):
         (1,-1)
     ]:
 
+        # 自己进攻
 
-        total += line_score(
+        total+=pattern_score(
             get_line(dr,dc,who)
         )
 
 
-        total += int(
-            line_score(
+        # 防守
+
+        total+=int(
+            pattern_score(
                 get_line(dr,dc,enemy)
             )
-            *0.9
+            *
+            0.9
         )
+
 
 
     return total
@@ -246,16 +289,16 @@ def evaluate_point(board,row,col,who):
 
 
 
-
-# ==========================
+# =========================
 # 搜索附近位置
-# ==========================
+# =========================
+
 
 def candidate_moves(board):
 
-    result=set()
+    moves=set()
 
-    has=False
+    exist=False
 
 
     for r in range(BOARD_SIZE):
@@ -264,7 +307,7 @@ def candidate_moves(board):
 
             if board[r][c]!=EMPTY:
 
-                has=True
+                exist=True
 
 
                 for dr in range(-2,3):
@@ -276,17 +319,20 @@ def candidate_moves(board):
 
 
                         if (
-                            0 <= nr < BOARD_SIZE
+                            0<=nr<BOARD_SIZE
                             and
-                            0 <= nc < BOARD_SIZE
+                            0<=nc<BOARD_SIZE
                             and
                             board[nr][nc]==EMPTY
                         ):
 
-                            result.add((nr,nc))
+                            moves.add(
+                                (nr,nc)
+                            )
 
 
-    if not has:
+
+    if not exist:
 
         return [
             (
@@ -296,19 +342,20 @@ def candidate_moves(board):
         ]
 
 
-    return list(result)
+    return list(moves)
 
 
 
 
 
-# ==========================
-# AI走棋
-# ==========================
+# =========================
+# AI落子
+# =========================
+
 
 def ai_move(board):
 
-    moves = candidate_moves(board)
+    moves=candidate_moves(board)
 
 
 
@@ -321,17 +368,16 @@ def ai_move(board):
 
 
 
-    # 高难度：检查胜利和堵截
+    # 高难度
+    # 先赢，再堵
+
 
     if AI_LEVEL=="高":
 
 
-        # AI可以赢
-
         for r,c in moves:
 
             board[r][c]=AI
-
 
             win,_=check_win(
                 board,
@@ -340,7 +386,6 @@ def ai_move(board):
                 AI
             )
 
-
             board[r][c]=EMPTY
 
 
@@ -350,13 +395,9 @@ def ai_move(board):
 
 
 
-
-        # 玩家要赢，阻止
-
         for r,c in moves:
 
             board[r][c]=PLAYER
-
 
             win,_=check_win(
                 board,
@@ -365,7 +406,6 @@ def ai_move(board):
                 PLAYER
             )
 
-
             board[r][c]=EMPTY
 
 
@@ -376,17 +416,15 @@ def ai_move(board):
 
 
 
-
     best=-1
 
-    best_pos=None
+    result=None
 
 
 
     for r,c in moves:
 
-
-        score=evaluate_point(
+        score=evaluate(
             board,
             r,
             c,
@@ -394,50 +432,53 @@ def ai_move(board):
         )
 
 
-        if score > best:
+        if score>best:
 
-            best = score
+            best=score
 
-            best_pos = (r,c)
+            result=(r,c)
 
 
 
-    return best_pos
-    # ==========================
-# 棋盘控件
-# ==========================
+    return result
+    # =========================
+# 棋盘 Widget
+# =========================
 
 class BoardWidget(Widget):
 
-    def __init__(self, status_label, **kwargs):
+    def __init__(self,status_label,**kwargs):
 
         super().__init__(**kwargs)
 
-        self.status_label = status_label
+        self.status_label=status_label
 
 
-        self.board = [
+        self.board=[
             [EMPTY]*BOARD_SIZE
             for _ in range(BOARD_SIZE)
         ]
 
 
-        self.move_history = []
+        self.history=[]
 
 
-        self.winning_cells = None
+        self.last_move=None
 
 
-        self.game_over = False
+        self.winning_cells=None
 
 
-        self.awaiting_ai = False
+        self.game_over=False
 
 
-        self.ai_event = None
+        self.awaiting_ai=False
 
 
-        self.on_win_callback = None
+        self.ai_event=None
+
+
+        self.on_win_callback=None
 
 
 
@@ -445,7 +486,6 @@ class BoardWidget(Widget):
             size=self.redraw,
             pos=self.redraw
         )
-
 
 
 
@@ -461,27 +501,23 @@ class BoardWidget(Widget):
 
 
 
-    # 棋盘起点
+    # 棋盘坐标
 
-    def grid_origin(self):
+    def origin(self):
 
         cs=self.cell_size()
 
-
-        ox=self.x + (
-            self.width -
-            cs*(BOARD_SIZE-1)
+        ox=self.x+(
+            self.width-cs*(BOARD_SIZE-1)
         )/2
 
 
-        oy=self.y + (
-            self.height -
-            cs*(BOARD_SIZE-1)
+        oy=self.y+(
+            self.height-cs*(BOARD_SIZE-1)
         )/2
 
 
         return ox,oy
-
 
 
 
@@ -495,20 +531,20 @@ class BoardWidget(Widget):
 
         cs=self.cell_size()
 
-
-        ox,oy=self.grid_origin()
+        ox,oy=self.origin()
 
 
 
         with self.canvas:
 
 
+
             # 背景
 
             Color(
-                0.85,
-                0.7,
-                0.45,
+                0.86,
+                0.72,
+                0.48,
                 1
             )
 
@@ -520,7 +556,7 @@ class BoardWidget(Widget):
 
 
 
-            # 棋线
+            # 棋盘线
 
             Color(
                 0.2,
@@ -532,6 +568,7 @@ class BoardWidget(Widget):
 
             for i in range(BOARD_SIZE):
 
+
                 Line(
                     points=[
                         ox+i*cs,
@@ -541,6 +578,7 @@ class BoardWidget(Widget):
                     ],
                     width=1
                 )
+
 
 
                 Line(
@@ -555,23 +593,21 @@ class BoardWidget(Widget):
 
 
 
+
             # 棋子
 
             for r in range(BOARD_SIZE):
 
                 for c in range(BOARD_SIZE):
 
-                    value=self.board[r][c]
 
-
-                    if value==EMPTY:
+                    if self.board[r][c]==EMPTY:
 
                         continue
 
 
 
                     x=ox+c*cs
-
                     y=oy+r*cs
 
 
@@ -579,17 +615,19 @@ class BoardWidget(Widget):
 
 
 
-                    if value==PLAYER:
+                    if self.board[r][c]==PLAYER:
+
 
                         Color(
-                            0.05,
-                            0.05,
-                            0.05,
+                            0.03,
+                            0.03,
+                            0.03,
                             1
                         )
 
 
                     else:
+
 
                         Color(
                             0.95,
@@ -614,7 +652,35 @@ class BoardWidget(Widget):
 
 
 
-            # 获胜标记
+            # 最后一步标记
+
+            if self.last_move:
+
+
+                r,c=self.last_move
+
+
+                Color(
+                    1,
+                    0,
+                    0,
+                    1
+                )
+
+
+                Line(
+                    circle=(
+                        ox+c*cs,
+                        oy+r*cs,
+                        cs*0.15
+                    ),
+                    width=2
+                )
+
+
+
+
+            # 五连高亮
 
             if self.winning_cells:
 
@@ -622,7 +688,7 @@ class BoardWidget(Widget):
                 Color(
                     1,
                     0.8,
-                    0.1,
+                    0,
                     1
                 )
 
@@ -630,19 +696,13 @@ class BoardWidget(Widget):
                 for r,c in self.winning_cells:
 
 
-                    x=ox+c*cs
-
-                    y=oy+r*cs
-
-
-
                     Line(
                         circle=(
-                            x,
-                            y,
+                            ox+c*cs,
+                            oy+r*cs,
                             cs*0.48
                         ),
-                        width=2.5
+                        width=3
                     )
 
 
@@ -650,8 +710,7 @@ class BoardWidget(Widget):
 
 
 
-
-    # 玩家点击
+    # 点击下棋
 
     def on_touch_down(self,touch):
 
@@ -661,19 +720,15 @@ class BoardWidget(Widget):
             or
             self.awaiting_ai
             or
-            not self.collide_point(
-                *touch.pos
-            )
+            not self.collide_point(*touch.pos)
         ):
-
             return
 
 
 
         cs=self.cell_size()
 
-
-        ox,oy=self.grid_origin()
+        ox,oy=self.origin()
 
 
 
@@ -704,13 +759,14 @@ class BoardWidget(Widget):
 
 
 
-
-        # 玩家落子
+        # 玩家棋
 
         self.board[row][col]=PLAYER
 
+        self.last_move=(row,col)
 
-        self.move_history.append(
+
+        self.history.append(
             (row,col,PLAYER)
         )
 
@@ -727,6 +783,7 @@ class BoardWidget(Widget):
         )
 
 
+
         if win:
 
             self.finish_game(
@@ -738,18 +795,17 @@ class BoardWidget(Widget):
 
 
 
+        self.awaiting_ai=True
+
+
         self.set_status(
             "AI思考中...",
             (1,1,1,1)
         )
 
 
-        self.awaiting_ai=True
-
-
-
         self.ai_event=Clock.schedule_once(
-            self.do_ai_move,
+            self.ai_play,
             0.4
         )
 
@@ -757,18 +813,12 @@ class BoardWidget(Widget):
 
 
 
+    # AI下棋
 
-
-    # AI行动
-
-    def do_ai_move(self,dt):
+    def ai_play(self,dt):
 
 
         self.awaiting_ai=False
-
-
-        self.ai_event=None
-
 
 
         pos=ai_move(
@@ -776,8 +826,7 @@ class BoardWidget(Widget):
         )
 
 
-
-        if pos is None:
+        if not pos:
 
             return
 
@@ -786,11 +835,13 @@ class BoardWidget(Widget):
         r,c=pos
 
 
-
         self.board[r][c]=AI
 
 
-        self.move_history.append(
+        self.last_move=(r,c)
+
+
+        self.history.append(
             (r,c,AI)
         )
 
@@ -827,8 +878,6 @@ class BoardWidget(Widget):
 
 
 
-
-
     def set_status(self,text,color):
 
         self.status_label.text=text
@@ -843,7 +892,6 @@ class BoardWidget(Widget):
 
 
         self.game_over=True
-
 
         self.winning_cells=cells
 
@@ -886,10 +934,9 @@ class BoardWidget(Widget):
 
 
 
-
     # 撤回
 
-    def retract_last(self):
+    def retract(self):
 
 
         if not self.awaiting_ai:
@@ -902,15 +949,12 @@ class BoardWidget(Widget):
 
             self.ai_event.cancel()
 
-            self.ai_event=None
 
 
+        if self.history:
 
-        if self.move_history:
 
-
-            r,c,w=self.move_history.pop()
-
+            r,c,w=self.history.pop()
 
             self.board[r][c]=EMPTY
 
@@ -918,18 +962,10 @@ class BoardWidget(Widget):
 
         self.awaiting_ai=False
 
+        self.last_move=None
 
 
         self.redraw()
-
-
-
-        self.set_status(
-            "轮到你了（黑棋）",
-            (1,1,1,1)
-        )
-
-
 
 
 
@@ -937,55 +973,39 @@ class BoardWidget(Widget):
 
     # 悔棋
 
-    def undo_move(self):
+    def undo(self):
 
 
-        if len(self.move_history)<2:
+        if len(self.history)<2:
 
             return
 
 
 
-        for _ in range(2):
+        for i in range(2):
 
-            r,c,w=self.move_history.pop()
+            r,c,w=self.history.pop()
 
             self.board[r][c]=EMPTY
 
 
+
+        self.last_move=None
 
         self.game_over=False
 
         self.winning_cells=None
 
 
-
         self.redraw()
 
 
 
-        self.set_status(
-            "悔棋成功",
-            (1,1,1,1)
-        )
 
 
-
-
-
-
-
-    # 重置
+    # 重开
 
     def reset(self):
-
-
-        if self.ai_event:
-
-            self.ai_event.cancel()
-
-            self.ai_event=None
-
 
 
         self.board=[
@@ -994,48 +1014,49 @@ class BoardWidget(Widget):
         ]
 
 
-        self.move_history=[]
+        self.history=[]
 
-
-        self.winning_cells=None
-
+        self.last_move=None
 
         self.game_over=False
 
-
-        self.awaiting_ai=False
-
+        self.winning_cells=None
 
 
         self.redraw()
 
 
-
         self.set_status(
             "轮到你了（黑棋）",
             (1,1,1,1)
-        )  
-        # ==========================
+        )   
+        # =========================
 # 按钮样式
-# ==========================
+# =========================
 
-def flat_button(text,color):
+def make_button(text):
 
     return Button(
         text=text,
+        font_name="Chinese",
+        font_size=16,
         background_normal="",
-        background_color=color,
-        color=(1,1,1,1),
-        font_size=16
+        background_color=(
+            0.25,
+            0.45,
+            0.7,
+            1
+        )
     )
 
 
 
 
 
-# ==========================
+# =========================
 # 主程序
-# ==========================
+# =========================
+
 
 class GomokuApp(App):
 
@@ -1045,11 +1066,10 @@ class GomokuApp(App):
         global AI_LEVEL
 
 
-
         Window.clearcolor=(
+            0.08,
+            0.08,
             0.1,
-            0.1,
-            0.12,
             1
         )
 
@@ -1067,9 +1087,14 @@ class GomokuApp(App):
 
             text="五子棋人机对战",
 
-            font_size=25,
+            font_name="Chinese",
 
-            size_hint=(1,0.07),
+            font_size=26,
+
+            size_hint=(
+                1,
+                0.08
+            ),
 
             color=(
                 1,
@@ -1077,7 +1102,6 @@ class GomokuApp(App):
                 0.4,
                 1
             )
-
         )
 
 
@@ -1086,54 +1110,66 @@ class GomokuApp(App):
 
             text="轮到你了（黑棋）",
 
+            font_name="Chinese",
+
             font_size=18,
 
-            size_hint=(1,0.06)
+            size_hint=(
+                1,
+                0.06
+            )
+        )
 
+
+
+        # 难度显示
+
+        level_label=Label(
+
+            text="难度：中",
+
+            font_name="Chinese",
+
+            font_size=17,
+
+            size_hint=(
+                1,
+                0.05
+            )
         )
 
 
 
         board=BoardWidget(
-
             status,
-
-            size_hint=(1,0.80)
-
+            size_hint=(
+                1,
+                0.68
+            )
         )
 
 
 
 
-
-        # ======================
         # 胜利弹窗
-        # ======================
 
-        def show_result(winner):
+        def result_popup(winner):
 
 
             if winner==PLAYER:
 
-                title_text="胜利"
-
                 msg="恭喜，你赢了！"
-
 
 
             elif winner==AI:
 
-                title_text="失败"
-
                 msg="AI赢了，再挑战一次吧"
-
 
 
             else:
 
-                title_text="平局"
+                msg="平局"
 
-                msg="双方打平"
 
 
 
@@ -1141,91 +1177,69 @@ class GomokuApp(App):
 
                 orientation="vertical",
 
-                spacing=10,
-
-                padding=10
+                spacing=10
 
             )
 
 
 
-            label=Label(
-
-                text=msg,
-
-                font_size=18
-
+            box.add_widget(
+                Label(
+                    text=msg,
+                    font_name="Chinese",
+                    font_size=18
+                )
             )
 
 
+            close=make_button(
+                "确定"
+            )
 
-            again=flat_button(
 
-                "重新开始",
+            box.add_widget(close)
 
-                (
-                    0.2,
-                    0.6,
-                    0.3,
-                    1
+
+
+            pop=Popup(
+
+                title="游戏结束",
+
+                content=box,
+
+                size_hint=(
+                    0.7,
+                    0.35
                 )
 
             )
 
 
 
-            box.add_widget(label)
-
-            box.add_widget(again)
-
-
-
-            popup=Popup(
-
-                title=title_text,
-
-                content=box,
-
-                size_hint=(0.8,0.35)
-
+            close.bind(
+                on_release=pop.dismiss
             )
 
 
-
-            def restart_game(*args):
-
-                board.reset()
-
-                popup.dismiss()
+            pop.open()
 
 
 
-            again.bind(
 
-                on_release=restart_game
-
-            )
-
-
-            popup.open()
-
-
-
-        board.on_win_callback=show_result
+        board.on_win_callback=result_popup
 
 
 
 
 
+        # 难度按钮
 
-        # ======================
-        # 底部按钮
-        # ======================
+        level_box=BoxLayout(
 
-
-        row=BoxLayout(
-
-            size_hint=(1,0.07),
+            size_hint=(
+                1,
+                0.08
+            ),
 
             spacing=5
 
@@ -1233,170 +1247,110 @@ class GomokuApp(App):
 
 
 
-
-        undo=flat_button(
-
-            "悔棋",
-
-            (
-                0.3,
-                0.4,
-                0.7,
-                1
-            )
-
-        )
-
-
-
-
-        retract=flat_button(
-
-            "撤回",
-
-            (
-                0.5,
-                0.5,
-                0.25,
-                1
-            )
-
-        )
-
-
-
-
-        level=flat_button(
-
-            "难度：中",
-
-            (
-                0.4,
-                0.4,
-                0.5,
-                1
-            )
-
-        )
-
-
-
-
-        restart=flat_button(
-
-            "重新开始",
-
-            (
-                0.6,
-                0.3,
-                0.3,
-                1
-            )
-
-        )
-
-
-
-
-
-
-
-        # 难度循环
-
-        def change_level(*args):
+        def set_level(level):
 
             global AI_LEVEL
 
+            AI_LEVEL=level
 
-
-            levels=[
-
-                "低",
-
-                "中",
-
-                "高"
-
-            ]
-
-
-
-            index=levels.index(
-                AI_LEVEL
-            )
-
-
-            index+=1
-
-
-
-            if index>=3:
-
-                index=0
-
-
-
-            AI_LEVEL=levels[index]
-
-
-
-            level.text="难度："+AI_LEVEL
+            level_label.text="难度："+level
 
 
 
 
-        level.bind(
+        low=make_button("低")
 
-            on_release=change_level
+        mid=make_button("中")
+
+        high=make_button("高")
+
+
+
+        low.bind(
+            on_release=lambda x:set_level("低")
+        )
+
+
+        mid.bind(
+            on_release=lambda x:set_level("中")
+        )
+
+
+        high.bind(
+            on_release=lambda x:set_level("高")
+        )
+
+
+
+        level_box.add_widget(low)
+
+        level_box.add_widget(mid)
+
+        level_box.add_widget(high)
+
+
+
+
+
+
+        # 功能按钮
+
+        button_box=BoxLayout(
+
+            size_hint=(
+                1,
+                0.09
+            ),
+
+            spacing=6
 
         )
 
 
 
+        undo=make_button(
+            "悔棋"
+        )
+
+
+        retract=make_button(
+            "撤回"
+        )
+
+
+        restart=make_button(
+            "重新开始"
+        )
 
 
 
         undo.bind(
-
-            on_release=lambda x:
-
-            board.undo_move()
-
+            on_release=lambda x:board.undo()
         )
-
 
 
         retract.bind(
-
-            on_release=lambda x:
-
-            board.retract_last()
-
+            on_release=lambda x:board.retract()
         )
-
 
 
         restart.bind(
-
-            on_release=lambda x:
-
-            board.reset()
-
+            on_release=lambda x:board.reset()
         )
 
 
 
+        button_box.add_widget(
+            undo
+        )
 
+        button_box.add_widget(
+            retract
+        )
 
-
-        row.add_widget(undo)
-
-        row.add_widget(retract)
-
-        row.add_widget(level)
-
-        row.add_widget(restart)
-
+        button_box.add_widget(
+            restart
+        )
 
 
 
@@ -1406,9 +1360,13 @@ class GomokuApp(App):
 
         root.add_widget(status)
 
+        root.add_widget(level_label)
+
         root.add_widget(board)
 
-        root.add_widget(row)
+        root.add_widget(level_box)
+
+        root.add_widget(button_box)
 
 
 
@@ -1417,11 +1375,6 @@ class GomokuApp(App):
 
 
 
-
-
-# ==========================
-# 启动
-# ==========================
 
 if __name__=="__main__":
 
