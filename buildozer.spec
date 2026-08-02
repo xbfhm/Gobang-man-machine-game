@@ -11,7 +11,7 @@ source.dir = .
 # 加入字体文件支持
 source.include_exts = py,png,jpg,kv,atlas,otf,ttf,ttc
 
-version = 0.3
+version = 0.4
 
 
 # Python 和 Kivy
