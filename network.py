@@ -3,6 +3,8 @@
 import socket
 import threading
 
+from kivy.clock import Clock
+
 
 PORT = 8888
 
@@ -13,11 +15,46 @@ class Network:
 
     def __init__(self):
 
-        self.socket = None
-
         self.connection = None
 
+        self.socket = None
+
         self.connected = False
+
+
+
+    # =====================
+    # 获取本机局域网IP
+    # =====================
+
+    def get_ip(self):
+
+        try:
+
+            s = socket.socket(
+                socket.AF_INET,
+                socket.SOCK_DGRAM
+            )
+
+            s.connect(
+                ("8.8.8.8",80)
+            )
+
+
+            ip = s.getsockname()[0]
+
+
+            s.close()
+
+
+            return ip
+
+
+        except:
+
+
+            return "未知IP"
+
 
 
 
@@ -25,64 +62,101 @@ class Network:
     # 创建房间
     # =====================
 
-    def create_room(self):
-
-        server = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
+    def create_room(self,callback):
 
 
-        server.setsockopt(
-            socket.SOL_SOCKET,
-            socket.SO_REUSEADDR,
-            1
-        )
+        def server_thread():
 
 
-        server.bind(
-            (
-                "",
-                PORT
-            )
-        )
+            try:
 
 
-        server.listen(1)
+                server = socket.socket(
+                    socket.AF_INET,
+                    socket.SOCK_STREAM
+                )
 
 
-
-        # 获取本机IP
-
-        hostname = socket.gethostname()
-
-        ip = socket.gethostbyname(
-            hostname
-        )
+                server.setsockopt(
+                    socket.SOL_SOCKET,
+                    socket.SO_REUSEADDR,
+                    1
+                )
 
 
-        print(
-            "房间IP:",
-            ip
-        )
+                server.bind(
+                    (
+                        "0.0.0.0",
+                        PORT
+                    )
+                )
+
+
+                server.listen(1)
 
 
 
-        # 等待别人连接
-
-        self.connection,addr = server.accept()
+                ip=self.get_ip()
 
 
-        self.connected=True
+                print(
+                    "等待连接:",
+                    ip
+                )
 
 
-        print(
-            "玩家加入:",
-            addr
-        )
+
+                # 等待玩家加入
+
+                self.connection,addr=server.accept()
 
 
-        return ip
+
+                self.connected=True
+
+
+
+                print(
+                    "连接成功:",
+                    addr
+                )
+
+
+
+                # 通知主界面
+
+                Clock.schedule_once(
+                    lambda dt:
+                    callback(True)
+                )
+
+
+
+                self.receive_loop(
+                    callback
+                )
+
+
+
+            except Exception as e:
+
+
+                print(
+                    "服务器错误:",
+                    e
+                )
+
+
+
+        threading.Thread(
+            target=server_thread,
+            daemon=True
+        ).start()
+
+
+
+        return self.get_ip()
+
 
 
 
@@ -92,23 +166,70 @@ class Network:
     # =====================
 
 
-    def join_room(self,ip):
-
-        self.socket=socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM
-        )
+    def join_room(self,ip,callback):
 
 
-        self.socket.connect(
-            (
-                ip,
-                PORT
-            )
-        )
+        def client_thread():
 
 
-        self.connected=True
+            try:
+
+
+                self.socket=socket.socket(
+                    socket.AF_INET,
+                    socket.SOCK_STREAM
+                )
+
+
+                self.socket.connect(
+                    (
+                        ip,
+                        PORT
+                    )
+                )
+
+
+
+                self.connected=True
+
+
+
+                Clock.schedule_once(
+                    lambda dt:
+                    callback(True)
+                )
+
+
+
+                self.receive_loop(
+                    callback
+                )
+
+
+
+            except Exception as e:
+
+
+                print(
+                    "连接失败:",
+                    e
+                )
+
+
+                Clock.schedule_once(
+                    lambda dt:
+                    callback(False)
+                )
+
+
+
+
+        threading.Thread(
+            target=client_thread,
+            daemon=True
+        ).start()
+
+
 
 
 
@@ -119,99 +240,157 @@ class Network:
 
     def send_move(self,row,col):
 
-        data=f"{row},{col}"
+
+        if not self.connected:
+
+            return
 
 
-        if self.connection:
-
-            self.connection.send(
-                data.encode("utf-8")
-            )
-
-
-        elif self.socket:
-
-            self.socket.send(
-                data.encode("utf-8")
-            )
-
-
-
-
-    # =====================
-    # 接收棋子
-    # =====================
-
-
-    def receive_move(self):
 
         try:
 
+
+            data=f"{row},{col}\n"
+
+
+
             if self.connection:
 
-                data=self.connection.recv(
-                    1024
-                )
 
-            else:
-
-                data=self.socket.recv(
-                    1024
+                self.connection.send(
+                    data.encode()
                 )
 
 
-            if not data:
-
-                return None
+            elif self.socket:
 
 
-
-            r,c=map(
-                int,
-                data.decode(
-                    "utf-8"
-                ).split(",")
-            )
-
-
-            return r,c
+                self.socket.send(
+                    data.encode()
+                )
 
 
 
         except:
 
-            return None
+
+            self.connected=False
+
+
 
 
 
 
     # =====================
-    # 开启监听线程
+    # 接收循环
     # =====================
 
 
-    def listen(self,callback):
+    def receive_loop(self,callback):
 
 
-        def run():
+        buffer=""
 
 
-            while self.connected:
+        while self.connected:
 
 
-                move=self.receive_move()
+            try:
 
 
-                if move:
+                if self.connection:
 
-                    callback(
-                        move[0],
-                        move[1]
+                    data=self.connection.recv(
+                        1024
+                    )
+
+
+                else:
+
+                    data=self.socket.recv(
+                        1024
                     )
 
 
 
-        threading.Thread(
-            target=run,
-            daemon=True
-        ).start()
+                if not data:
+
+
+                    self.connected=False
+
+                    break
+
+
+
+                buffer+=data.decode()
+
+
+
+                while "\n" in buffer:
+
+
+                    msg,buffer=buffer.split(
+                        "\n",
+                        1
+                    )
+
+
+
+                    if "," in msg:
+
+
+                        r,c=map(
+                            int,
+                            msg.split(",")
+                        )
+
+
+                        # 回到Kivy主线程
+
+                        Clock.schedule_once(
+                            lambda dt:
+                            callback(
+                                r,
+                                c
+                            )
+                        )
+
+
+
+            except:
+
+
+                self.connected=False
+
+                break
+
+
+
+
+
+    # =====================
+    # 关闭连接
+    # =====================
+
+
+    def close(self):
+
+
+        self.connected=False
+
+
+        try:
+
+            if self.connection:
+
+                self.connection.close()
+
+
+            if self.socket:
+
+                self.socket.close()
+
+
+        except:
+
+            pass
