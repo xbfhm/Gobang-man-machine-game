@@ -441,7 +441,9 @@ def ai_move(board):
 
 
     return result
-    # =========================
+
+
+# =========================
 # 棋盘 Widget
 # =========================
 
@@ -1030,8 +1032,10 @@ class BoardWidget(Widget):
             "轮到你了（黑棋）",
             (1,1,1,1)
         )   
-        # =========================
-# 按钮样式
+
+
+# =========================
+# 按钮样式（调大字体至 24）
 # =========================
 
 def make_button(text):
@@ -1039,7 +1043,7 @@ def make_button(text):
     return Button(
         text=text,
         font_name="Chinese",
-        font_size=16,
+        font_size=24,  # 原为 16 -> 调整为 24
         background_normal="",
         background_color=(
             0.25,
@@ -1089,7 +1093,7 @@ class GomokuApp(App):
 
             font_name="Chinese",
 
-            font_size=26,
+            font_size=36,  # 原为 26 -> 调整为 36
 
             size_hint=(
                 1,
@@ -1112,7 +1116,7 @@ class GomokuApp(App):
 
             font_name="Chinese",
 
-            font_size=18,
+            font_size=26,  # 原为 18 -> 调整为 26
 
             size_hint=(
                 1,
@@ -1130,7 +1134,7 @@ class GomokuApp(App):
 
             font_name="Chinese",
 
-            font_size=17,
+            font_size=24,  # 原为 17 -> 调整为 24
 
             size_hint=(
                 1,
@@ -1144,7 +1148,7 @@ class GomokuApp(App):
             status,
             size_hint=(
                 1,
-                0.68
+                0.60  # 稍微缩小棋盘占比(0.68->0.60)，为下方大字按钮预留空间
             )
         )
 
@@ -1187,7 +1191,7 @@ class GomokuApp(App):
                 Label(
                     text=msg,
                     font_name="Chinese",
-                    font_size=18
+                    font_size=26  # 原为 18 -> 调整为 26
                 )
             )
 
@@ -1205,11 +1209,13 @@ class GomokuApp(App):
 
                 title="游戏结束",
 
+                title_size=24,  # 添加标题字号设置
+
                 content=box,
 
                 size_hint=(
                     0.7,
-                    0.35
+                    0.4  # 稍微增大弹窗尺寸以容纳大字体
                 )
 
             )
@@ -1238,7 +1244,7 @@ class GomokuApp(App):
 
             size_hint=(
                 1,
-                0.08
+                0.10  # 稍微调高占比以容纳大字按钮
             ),
 
             spacing=5
@@ -1299,7 +1305,7 @@ class GomokuApp(App):
 
             size_hint=(
                 1,
-                0.09
+                0.11  # 稍微调高占比以容纳大字按钮
             ),
 
             spacing=6
