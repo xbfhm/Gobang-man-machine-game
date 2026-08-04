@@ -22,7 +22,8 @@ fullscreen = 0
 # =====================
 # Android 配置
 # =====================
-android.api = 30                      # 推荐使用 API 30，兼容性更好（也可保留 34）
+# android.api 推荐使用 30，兼容性更好（也可保留 34）
+android.api = 30
 android.minapi = 21
 android.ndk = 25b
 android.accept_sdk_license = True
