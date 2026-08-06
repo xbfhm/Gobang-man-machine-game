@@ -21,8 +21,9 @@ source.exclude_dirs = tests, .git, .github, __pycache__, .buildozer
 version = 2.0
 
 # requirements：python 3.11.7 + kivy 2.3.1 + plyer(震动)
-# 以上组合经社区验证可在 NDK r28 + p4a develop 下成功构建并支持 16KB 页
-requirements = python3==3.11.7,kivy==2.3.1,plyer
+# 注意：必须同时固定 hostpython3 == python3，否则 p4a 会因
+# 宿主 Python(默认3.14.2) 与目标 Python(3.11.7) 版本不一致而报错
+requirements = python3==3.11.7,hostpython3==3.11.7,kivy==2.3.1,plyer
 
 orientation = portrait
 fullscreen = 0
