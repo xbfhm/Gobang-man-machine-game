@@ -1,40 +1,60 @@
 [app]
-title = 五子棋对战
-package.name = gomoku
-package.domain = org.example
+# =====================================================
+# 五子棋豪华版 v2.0 —— 安卓 16 (API 36) 兼容配置
+# 关键点：
+#   * android.api = 36        （targetSdk = Android 16）
+#   * android.ndk = 28c       （NDK r28+ 默认按 16KB 页大小对齐编译，
+#                              满足 Google Play 对安卓15+ 的 16KB 要求）
+#   * android.archs = arm64-v8a（16KB 对齐仅对 64 位设备强制；只打 64 位包）
+#   * p4a.branch = develop    （python-for-android 开发分支，
+#                              已修复 16KB 对齐与 API 36 相关兼容问题）
+# =====================================================
+title = 五子棋豪华版
+package.name = gomoku16
+package.domain = org.gomoku
 source.dir = .
 
-# 加入字体和资源文件支持
-source.include_exts = py,png,jpg,kv,atlas,otf,ttf,ttc
+# 打包内容：Python + 字体
+source.include_exts = py,png,jpg,kv,atlas,otf,ttf,ttc,json
+source.exclude_dirs = tests, .git, .github, __pycache__, .buildozer
 
-version = 0.5
+version = 2.0
 
-# ===== 关键修改：固定 Python 版本（推荐 3.11）=====
-python.version = 3.11
+# requirements：python 3.11.7 + kivy 2.3.1 + plyer(震动)
+# 以上组合经社区验证可在 NDK r28 + p4a develop 下成功构建并支持 16KB 页
+requirements = python3==3.11.7,kivy==2.3.1,plyer
 
-# Python 和 Kivy（此处 kivy 将使用与 Python 3.11 兼容的版本）
-requirements = python3,kivy
-
-# 手机方向
 orientation = portrait
 fullscreen = 0
 
 # =====================
-# Android 配置
+# Android 配置（安卓 16）
 # =====================
-# android.api 推荐使用 30，兼容性更好（也可保留 34）
-android.api = 30
-android.minapi = 21
-android.ndk = 25b
-android.accept_sdk_license = True
-android.build_tools_version = 34.0.0
+# targetSdkVersion = 36（安卓 16）
+android.api = 36
+# minSdk = 24（安卓 7.0 及以上；安卓 16 手机远高于此）
+android.minapi = 24
+# NDK r28c：默认生成 16KB 对齐的 .so
+android.ndk = 28c
+# NDK 目标 API
+android.ndk_api = 24
+# 只构建 arm64-v8a（16KB 对齐只要求 64 位；覆盖 99% 以上安卓 16 设备）
 android.archs = arm64-v8a
+android.accept_sdk_license = True
+android.build_tools_version = 36.0.0
+android.enable_androidx = True
 
-# 开启网络权限
-android.permissions = INTERNET, ACCESS_NETWORK_STATE
+# 权限：联网 + 震动
+android.permissions = INTERNET, ACCESS_NETWORK_STATE, VIBRATE
+
+# python-for-android 使用 develop 分支（含 16KB 修复，配合 NDK r28c）
+p4a.branch = develop
+
+# 出错时保留完整日志便于排查
+log_level = 2
 
 # =====================
-# Buildozer 通用配置
+# Buildozer 通用
 # =====================
 [buildozer]
 log_level = 2
