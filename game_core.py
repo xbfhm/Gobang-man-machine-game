@@ -552,6 +552,11 @@ def _defense_move(board, size, attacker, defender):
     return random.choice(moves)
 
 
+def defense_move(board, size, attacker, defender):
+    """公开的防守策略（供残局模式 AI 防守使用）"""
+    return _defense_move(board, size, attacker, defender)
+
+
 def solve_challenge(idx, seed=2024):
     """
     用求解型 AI（黑）对阵防守 AI（白），返回 (是否在 win_in 手内获胜, 实际手数)。
