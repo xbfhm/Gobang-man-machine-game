@@ -746,12 +746,23 @@ class BoardWidget(Widget):
             return
 
         if config.mode == "CHALLENGE":
-            if self._try_move(row, col, gc.WHITE):
+            # 玩家执黑解题；禁手对黑棋也生效（可选）
+            if config.forbidden_enabled and gc.is_forbidden(self.board, self.board_size,
+                                                            row, col, gc.BLACK):
+                self.play_sound("lose")
+                self.set_status(self.tr("forbidden"), (1, 0.2, 0.2, 1))
+                self.finish_game(gc.WHITE, None, forbidden=True)
+                return
+            if self._try_move(row, col, gc.BLACK):
                 self.hint_move = None
                 win, cells = gc.check_win(self.board, self.board_size, row, col,
-                                          gc.WHITE, config.six_in_row)
+                                          gc.BLACK, config.six_in_row)
                 if win:
-                    self.finish_game(gc.WHITE, cells)
+                    self.finish_game(gc.BLACK, cells)
+                    return
+                # 超过步数限制即失败
+                if self.ai_steps >= self._challenge_win_in():
+                    self.finish_game(gc.WHITE, None)
                     return
                 self.set_status(self.tr("ai_thinking"), (1, 1, 1, 1))
                 self.awaiting_ai = True
@@ -786,7 +797,7 @@ class BoardWidget(Widget):
         if config.mode == "DOUBLE":
             return self.current_player
         if config.mode == "CHALLENGE":
-            return gc.WHITE
+            return gc.BLACK  # 玩家（黑）解题方被计时
         return None
 
     # ---------- AI ----------
@@ -795,19 +806,24 @@ class BoardWidget(Widget):
         if self.game_over:
             return
         if config.mode == "CHALLENGE":
-            pos = gc.ai_hint(self.board, self.board_size, gc.BLACK, "高")
+            # AI 执白防守
+            pos = gc.defense_move(self.board, self.board_size, gc.BLACK, gc.WHITE)
             if pos is None:
                 return
             r, c = pos
-            self._try_move(r, c, gc.BLACK)
-            win, cells = gc.check_win(self.board, self.board_size, r, c, gc.BLACK, config.six_in_row)
+            self._try_move(r, c, gc.WHITE)
+            win, cells = gc.check_win(self.board, self.board_size, r, c, gc.WHITE, config.six_in_row)
             if win:
-                self.finish_game(gc.WHITE, cells, ai_won=True)
+                self.finish_game(gc.WHITE, cells)
                 return
+            if gc.board_full(self.board, self.board_size):
+                self.finish_game(None, None)
+                return
+            # 玩家未在限内取胜
             if self.ai_steps >= self._challenge_win_in():
-                self.finish_game(gc.WHITE, None, challenge_pass=True)
+                self.finish_game(gc.WHITE, None)
                 return
-            self.set_status(f"防守！AI 已走 {self.ai_steps}/{self._challenge_win_in()} 手",
+            self.set_status(f"你已走 {self.ai_steps}/{self._challenge_win_in()} 手，继续！",
                             (1, 1, 1, 1))
             return
         pos = gc.ai_move(self.board, self.board_size, gc.WHITE, config.difficulty, config.ai_style)
@@ -834,14 +850,16 @@ class BoardWidget(Widget):
 
     # ---------- 提示 / 威胁 ----------
     def show_hint(self):
-        if self.game_over or not self.history:
+        if self.game_over:
             return
         if config.mode == "CHALLENGE":
-            pos = gc.ai_hint(self.board, self.board_size, gc.BLACK, "高")
-            if pos:
-                self.hint_move = pos
-                self.set_status(self.tr("challenge_hint") + f"{pos[0] + 1},{pos[1] + 1}", (0.2, 1, 0.3, 1))
-        elif config.mode in ("AI", "DOUBLE", "ONLINE"):
+            if not self.replay_mode:
+                pos = gc.ai_hint(self.board, self.board_size, gc.BLACK, "高")
+                if pos:
+                    self.hint_move = pos
+                    self.set_status(self.tr("challenge_hint") + f"{pos[0] + 1},{pos[1] + 1}",
+                                    (0.2, 1, 0.3, 1))
+        elif self.history and config.mode in ("AI", "DOUBLE", "ONLINE"):
             who = gc.BLACK if config.mode in ("AI", "ONLINE") else self.current_player
             pos = gc.ai_hint(self.board, self.board_size, who, "高")
             if pos:
@@ -904,11 +922,11 @@ class BoardWidget(Widget):
                 result, msg = "win", self.tr("white") + " " + self.tr("you_win")
         elif config.mode == "CHALLENGE":
             info["challenge"] = True
-            if challenge_pass or winner == gc.WHITE:
+            if winner == gc.BLACK or challenge_pass:
                 result, msg = "win", self.tr("challenge_pass")
             else:
                 result, msg = "lose", self.tr("challenge_fail")
-            info["fast"] = self.ai_steps <= 5
+            info["fast"] = self.ai_steps <= 3
         elif config.mode == "ONLINE":
             info["online"] = True
             if winner == gc.BLACK:
@@ -1026,10 +1044,10 @@ class BoardWidget(Widget):
             self.board_size = size
             self.challenge_active = True
             data = gc.CHALLENGES[self.challenge_idx - 1]
+            # 玩家执黑解题（win_in 手内取胜），AI 执白防守
+            self.current_player = gc.BLACK
             self.set_status(f"残局 {self.challenge_idx}/10 · {data['name']} · "
-                            f"{self.tr('white')} 防守（AI {win_in} 手内取胜）", (1, 1, 0.6, 1))
-            self.awaiting_ai = True
-            Clock.schedule_once(self.ai_play, 0.4)
+                            f"你执黑，{win_in} 手内取胜", (1, 1, 0.6, 1))
         elif config.mode == "AI" and config.ai_first:
             m = self.board_size // 2
             opening = config.opening
@@ -1300,10 +1318,14 @@ class GomokuApp(App):
             b = ToggleButton(text=text, font_name="Chinese", font_size=sp(15),
                              state="down" if down else "normal", group=group,
                              size_hint_y=None, height=dp(46))
-            b.bind(on_release=cb)
+            def handler(x):
+                if x.state == "down":   # 只在“按下生效”时触发，避免组内联动误触
+                    cb(x)
+            b.bind(on_release=handler)
             return b
 
         # 模式切换
+        self.mode_toggles = {}
         b_ai = mk_toggle(self.tr("mode_ai"), lambda x: self.set_mode("AI"),
                          down=(config.mode == "AI"), group="mode")
         b_double = mk_toggle(self.tr("mode_double"), lambda x: self.set_mode("DOUBLE"),
@@ -1312,6 +1334,8 @@ class GomokuApp(App):
                                 down=(config.mode == "CHALLENGE"), group="mode")
         b_online = mk_toggle(self.tr("mode_online"), lambda x: self.online_click(),
                              down=(config.mode == "ONLINE"), group="mode")
+        self.mode_toggles = {"AI": b_ai, "DOUBLE": b_double,
+                             "CHALLENGE": b_challenge, "ONLINE": b_online}
         grid.add_widget(b_ai)
         grid.add_widget(b_double)
         grid.add_widget(b_challenge)
@@ -1401,6 +1425,15 @@ class GomokuApp(App):
         self.board.reset()
         if mode == "CHALLENGE":
             self.board.challenge_idx = 1
+        self._sync_mode_ui()
+
+    def _sync_mode_ui(self):
+        """让模式切换按钮与当前模式保持一致"""
+        try:
+            for m, btn in self.mode_toggles.items():
+                btn.state = "down" if config.mode == m else "normal"
+        except Exception:
+            pass
 
     def toggle_threats(self):
         config.show_threats = not config.show_threats
@@ -1630,6 +1663,7 @@ class GomokuApp(App):
         config.save()
         self.board.challenge_idx = idx
         self.board.reset()
+        self._sync_mode_ui()
 
     # ---------- 联机 ----------
     def online_click(self):
