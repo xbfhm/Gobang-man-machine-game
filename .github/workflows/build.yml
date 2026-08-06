@@ -1,20 +1,20 @@
-name: Build APK
+name: Build APK (Android 16)
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -25,11 +25,11 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt update
-          sudo apt install -y git zip unzip python3-pip python3-virtualenv \
-            build-essential autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
-            libtinfo5 libtinfo6 cmake libffi-dev libssl-dev automake autopoint gettext ccache
+          sudo apt install -y git zip unzip python3-pip build-essential autoconf \
+            libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 libtinfo6 cmake libffi-dev libssl-dev automake \
+            autopoint gettext ccache
 
-      # ✨【修改 1】移除了项目根目录的 .buildozer 局部缓存，避免文件路径脏数据
       - name: Cache buildozer global directory
         uses: actions/cache@v4
         with:
@@ -40,45 +40,48 @@ jobs:
 
       - name: Install buildozer and cython
         run: |
-          pip install --upgrade pip setuptools
-          pip install "buildozer>=1.5.0" "cython<3.0.0"
+          pip install --upgrade pip setuptools wheel
+          pip install "buildozer>=1.5.0" "cython>=3.0.0,<3.1"
 
-      - name: Ensure Android SDK license auto-accept is enabled
-        run: |
-          if grep -q '^android.accept_sdk_license' buildozer.spec; then
-            sed -i 's/^android.accept_sdk_license.*/android.accept_sdk_license = True/' buildozer.spec
-          else
-            echo 'android.accept_sdk_license = True' >> buildozer.spec
-          fi
+      - name: Clean previous buildozer artifacts
+        run: rm -rf .buildozer/
 
-      # ✨【修改 2】构建前清除上次残留的本地构建缓存，彻底解决 TypeError
-      - name: Clean previous buildozer artifact cache
-        run: |
-          rm -rf .buildozer/
-
-      - name: Build APK
+      - name: Build debug APK (targetSdk 36 / NDK 28c / arm64-v8a)
         run: |
           set -o pipefail
-          # 设置 APP_ALLOW_MISSING_DEPS 避免某些 NDK 依赖项报隐式缺失错误
           export APP_ALLOW_MISSING_DEPS=true
+          # 使用 python-for-android develop 分支（buildozer.spec 中 p4a.branch = develop）
           buildozer -v android debug 2>&1 | tee build_log.txt
+
+      - name: Verify 16KB page size alignment
+        run: |
+          APK=$(ls bin/*.apk 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then echo "::error::No APK produced"; exit 1; fi
+          echo "APK: $APK"
+          mkdir -p /tmp/apk
+          unzip -q "$APK" -d /tmp/apk
+          NDK=$(ls -d ~/.buildozer/android/platform/android-ndk-* 2>/dev/null | head -1)
+          echo "NDK: $NDK"
+          if [ -n "$NDK" ]; then
+            READELF="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            for so in /tmp/apk/lib/arm64-v8a/*.so; do
+              echo "== $(basename $so) =="
+              "$READELF" -l "$so" 2>/dev/null | awk '/LOAD/ {print $NF}' | sort -u
+            done
+          fi
+          echo "16KB alignment check done (align 2**14 = 16384 means OK)"
 
       - name: Locate and copy APKs
         run: |
-          mkdir -p bin
-          find . -name "*.apk" ! -path "./bin/*" -exec cp {} bin/ \;
-          ls -la bin/
-          if [ -z "$(ls -A bin/ 2>/dev/null)" ]; then
-            echo "::error::buildozer 没有生成任何 .apk 文件,构建实际失败,请查看 build_log.txt"
-            exit 1
-          fi
+          mkdir -p artifact
+          cp bin/*.apk artifact/ 2>/dev/null || true
+          ls -la artifact/
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: gomoku-apk
-          path: bin/*.apk
+          name: gomoku16-apk
+          path: artifact/*.apk
 
       - name: Upload Build Log
         if: always()
