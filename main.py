@@ -1,34 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-五子棋豪华版 v2.0 —— 安卓 16 兼容版
-====================================
-本次新增功能（15+）：
- 1. 棋盘尺寸可选：9x9 / 13x13 / 15x15 / 19x19
- 2. 残局挑战模式：内置 10 个残局（步数限制 + 提示 + 自动判胜负）
- 3. AI 智能提示（推荐落点 + 一键代走）
- 4. 威胁点实时可视化（红圈标出对方活三/冲四/活四威胁）
- 5. 精确禁手检测（长连 / 双三 / 双四，仅黑棋）
- 6. 悔棋次数限制（可配置 0~10 次，面板显示剩余次数）
- 7. 对局统计面板（分模式胜负平、胜率、连胜、成就）
- 8. 成就系统（9 个成就，解锁弹窗）
- 9. 对局自动保存与恢复（退出后下次可继续）
-10. 完整棋谱回放（SGF 载入 + 播放/暂停/步进/变速）
-11. 程序生成音效（落子/胜利/失败/悔棋，无需外部音频文件）
-12. 胜利动画（连珠脉冲 + 彩带飘落）与落子动画
-13. 触觉反馈（安卓震动，桌面端自动跳过）
-14. 每步限时模式（倒计时显示、超时判负、时长可设 10/30/60/120 秒）
-15. 联机模式：创建房间 / 加入房间（输入 IP）+ 实时聊天
-16. 新增主题：星空 / 海洋（共 5 套）+ 网格线颜色
-17. 随机开局：AI 先手时可选 天元 / 星位 / 随机
-18. 中英文界面切换
-19. 棋盘双指缩放 + 拖动查看
-20. 棋局自动保存 SGF（可选）
-
-兼容安卓 16（API 36）：见 buildozer.spec（targetSdk 36、NDK r28c、
-arm64-v8a、16KB 页大小对齐）。
+五子棋豪华版 v2.1 —— 安卓 16 兼容版（真机 UI 修复）
+====================================================
+v2.1 修复（真机反馈）：
+  * 全部字号改用 sp()、尺寸改用 dp() —— 高密度屏不再字小
+  * 顶部安全区：读取状态栏高度（含刘海/摄像头挖孔），标题不再被挡住
+  * 主控制面板 GridLayout 子控件固定高度，避免面板塌陷导致按键失效
+  * 回放控制条仅在回放模式下显示，平时不再出现“没反应”的按钮
+  * 去除所有 emoji（NotoSansCJK 无字形→豆腐块），改用安全符号
+  * 弹窗改用自定义中文标题，避免默认字体缺中文字形
 """
 
-import gc as _gc_module  # 避免与内置 gc 冲突，统一用 gc 指代 game_core
+import gc as _gc_module  # 统一用 gc 指代 game_core
 import os
 import sys
 import json
@@ -41,6 +24,7 @@ import random
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.core.text import LabelBase
+from kivy.metrics import dp, sp
 from kivy.uix.widget import Widget
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -70,15 +54,30 @@ try:
 except Exception:
     pass
 
+
+def CJK(text, size=15, color=(1, 1, 1, 1), **kw):
+    """统一创建中文字体 Label（默认字号 sp 15）"""
+    return Label(text=text, font_name="Chinese", font_size=sp(size),
+                 color=color, **kw)
+
+
+def CJKBtn(text, font=15, **kw):
+    """统一创建中文字体 Button（宽度自适应，固定高度，防面板塌陷）"""
+    kw.setdefault("size", (dp(100), dp(46)))
+    b = Button(text=text, font_name="Chinese", font_size=sp(font),
+               size_hint=(1, None), **kw)
+    return b
+
+
 # =========================
-# 多语言
+# 多语言（不含 emoji，全部为 NotoSansCJK 可显示字符）
 # =========================
 TXT = {
     "zh": {
         "title": "五子棋豪华版",
         "your_turn": "轮到你了（黑棋）",
         "ai_thinking": "AI 思考中...",
-        "you_win": "🎉 你赢了！",
+        "you_win": "你赢了！",
         "ai_win": "对方赢了！",
         "draw": "平局",
         "forbidden": "禁手！",
@@ -87,9 +86,9 @@ TXT = {
         "undo_done": "已悔棋（剩余 {n} 次）",
         "no_undo": "本局悔棋次数已用完",
         "hint": "提示",
-        "hint_show": "提示：黑 {r} 白 {c}（已标星）",
-        "threats_on": "威胁点显示：开",
-        "threats_off": "威胁点显示：关",
+        "hint_show": "提示：第 {r} 行 第 {c} 列（已标绿圈）",
+        "threats_on": "威胁点：开",
+        "threats_off": "威胁点：关",
         "saved": "棋谱已保存",
         "loaded": "棋谱已载入，进入回放",
         "stats": "统计",
@@ -116,23 +115,34 @@ TXT = {
         "resume": "发现未完成的对局，是否继续？",
         "resume_yes": "继续",
         "resume_no": "放弃",
-        "challenge_pass": "🎉 残局通过！",
+        "challenge_pass": "残局通过！",
         "challenge_fail": "残局失败，再接再厉",
         "challenge_hint": "提示：",
         "black": "黑棋",
         "white": "白棋",
         "move": "第 {n} 手",
-        "time_left": "⏱ {t}s",
-        "achievement": "🏆 解锁成就：{name}",
+        "time_left": "剩余 {t} 秒",
+        "achievement": "解锁成就：{name}",
         "undo_limit": "悔棋剩余",
         "ai_first": "AI 先手",
         "you_first": "你先手",
+        "save_sgf": "保存棋谱",
+        "ai_move": "AI 代走",
+        "prev": "上一步",
+        "play": "播放",
+        "pause": "暂停",
+        "next": "下一步",
+        "speed": "速度",
+        "locked": "未解锁",
+        "unlocked": "已解锁",
+        "ok": "保存",
+        "apply": "应用",
     },
     "en": {
         "title": "Gomoku Deluxe",
         "your_turn": "Your turn (Black)",
         "ai_thinking": "AI thinking...",
-        "you_win": "🎉 You win!",
+        "you_win": "You win!",
         "ai_win": "AI wins!",
         "draw": "Draw",
         "forbidden": "Forbidden move!",
@@ -170,25 +180,36 @@ TXT = {
         "resume": "Unfinished game found. Resume?",
         "resume_yes": "Resume",
         "resume_no": "Discard",
-        "challenge_pass": "🎉 Puzzle solved!",
+        "challenge_pass": "Puzzle solved!",
         "challenge_fail": "Puzzle failed",
         "challenge_hint": "Hint: ",
         "black": "Black",
         "white": "White",
         "move": "Move {n}",
-        "time_left": "⏱ {t}s",
-        "achievement": "🏆 Achievement: {name}",
+        "time_left": "{t}s left",
+        "achievement": "Achievement: {name}",
         "undo_limit": "Undo left",
         "ai_first": "AI first",
         "you_first": "You first",
+        "save_sgf": "Save SGF",
+        "ai_move": "AI move",
+        "prev": "Prev",
+        "play": "Play",
+        "pause": "Pause",
+        "next": "Next",
+        "speed": "Speed",
+        "locked": "Locked",
+        "unlocked": "Unlocked",
+        "ok": "Save",
+        "apply": "Apply",
     },
 }
+
 
 # =========================
 # 程序生成音效（无需外部 wav）
 # =========================
 def _write_wav(path, freq, dur, vol=0.5, wave_type="sin", seq=None):
-    """生成简单 wav 文件。seq: [(freq, dur), ...] 顺序播放"""
     try:
         rate = 22050
         frames = bytearray()
@@ -202,7 +223,6 @@ def _write_wav(path, freq, dur, vol=0.5, wave_type="sin", seq=None):
                     v = vol if math.sin(2 * math.pi * f * t) >= 0 else -vol
                 else:
                     v = vol * math.sin(2 * math.pi * f * t)
-                # 淡出避免爆音
                 if i > n * 0.8:
                     v *= (n - i) / (n * 0.2)
                 frames += struct.pack("<h", int(v * 32000))
@@ -218,7 +238,6 @@ def _write_wav(path, freq, dur, vol=0.5, wave_type="sin", seq=None):
 
 
 def ensure_sounds():
-    """确保音效文件存在（生成于应用数据目录）"""
     files = {
         "place.wav": dict(seq=[(660, 0.06)], wave_type="square", vol=0.4),
         "undo.wav": dict(seq=[(440, 0.08), (330, 0.08)], vol=0.4),
@@ -232,16 +251,60 @@ def ensure_sounds():
 
 
 # =========================
-# 全局配置（可保存）
+# 安全区（状态栏/刘海/摄像头挖孔）
+# =========================
+def get_insets():
+    """
+    返回 (top, right, bottom, left) 安全区（单位：像素）。
+    安卓：尝试读取 status_bar_height / navigation_bar_height 资源。
+    其他平台：返回 0。
+    """
+    top = right = bottom = left = 0
+    platform = None
+    try:
+        from kivy.utils import platform
+    except Exception:
+        platform = None
+    if platform == "android":
+        try:
+            from jnius import autoclass
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            activity = PythonActivity.mActivity
+            res = activity.getResources()
+            ident = res.getIdentifier("status_bar_height", "dimen", "android")
+            if ident > 0:
+                top = int(res.getDimensionPixelSize(ident))
+            ident2 = res.getIdentifier("navigation_bar_height", "dimen", "android")
+            if ident2 > 0:
+                bottom = int(res.getDimensionPixelSize(ident2))
+            try:  # 刘海/挖孔区域
+                from jnius import cast
+                from jnius import autoclass as _ac
+                DisplayCutout = _ac("android.view.DisplayCutout")
+                view = activity.getWindow().getDecorView()
+                cutout = view.getRootWindowInsets().getDisplayCutout()
+                if cutout is not None:
+                    safe = cutout.getSafeInsetTop()
+                    if safe > top:
+                        top = safe
+            except Exception:
+                pass
+        except Exception as e:
+            Logger.warning("insets error: %s", e)
+    return (top, right, bottom, left)
+
+
+# =========================
+# 全局配置
 # =========================
 class Config:
     def __init__(self):
-        self.mode = "AI"            # AI / DOUBLE / CHALLENGE / ONLINE
-        self.board_size = 19        # 9 / 13 / 15 / 19
-        self.difficulty = "中"      # 低 / 中 / 高
-        self.ai_style = "平衡"      # 进攻 / 防守 / 平衡
-        self.theme = "木质"         # 木质 / 深色 / 简约 / 星空 / 海洋
-        self.piece_style = "圆形"   # 圆形 / 方块 / 序号
+        self.mode = "AI"
+        self.board_size = 19
+        self.difficulty = "中"
+        self.ai_style = "平衡"
+        self.theme = "木质"
+        self.piece_style = "圆形"
         self.grid_color = (0.2, 0.15, 0.1, 1)
         self.show_coords = True
         self.sound_enabled = True
@@ -250,9 +313,9 @@ class Config:
         self.timer_seconds = 30
         self.forbidden_enabled = False
         self.six_in_row = False
-        self.undo_limit = 3         # 0 = 禁止悔棋
-        self.ai_first = False       # AI 先手
-        self.opening = "天元"       # 天元 / 星位 / 随机（AI 先手时生效）
+        self.undo_limit = 3
+        self.ai_first = False
+        self.opening = "天元"
         self.fullscreen = False
         self.lang = "zh"
         self.show_threats = True
@@ -299,7 +362,7 @@ class BoardWidget(Widget):
         self.status_label = status_label
         self.board_size = config.board_size
         self.board = gc.make_board(self.board_size)
-        self.history = []            # (r, c, who)
+        self.history = []
         self.last_move = None
         self.winning_cells = None
         self.game_over = False
@@ -308,23 +371,19 @@ class BoardWidget(Widget):
         self.step_count = 0
         self.undo_used = 0
 
-        # 挑战模式
         self.challenge_idx = 1
-        self.ai_steps = 0            # AI(黑) 已走手数
+        self.ai_steps = 0
         self.challenge_active = False
 
-        # 网络
         self.network = None
         self.online = False
         self.my_turn = False
         self.chat_lines = []
 
-        # 计时
         self.timer_running = False
         self.time_left = config.timer_seconds
         self.timer_event = None
 
-        # 回放
         self.replay_mode = False
         self.replay_steps = []
         self.replay_index = 0
@@ -332,7 +391,6 @@ class BoardWidget(Widget):
         self.replay_speed = 1.0
         self.replay_event = None
 
-        # 缩放 / 拖动
         self.zoom = 1.0
         self.pan_x = 0.0
         self.pan_y = 0.0
@@ -341,13 +399,11 @@ class BoardWidget(Widget):
         self._pinch_start_zoom = None
         self._drag_start = None
 
-        # 动画
-        self.piece_anim = {}         # (r,c) -> start_time
+        self.piece_anim = {}
         self.pulse_t = 0.0
         self.confetti = []
         self.anim_event = None
 
-        # 音效
         self.sound = {}
         if config.sound_enabled:
             try:
@@ -358,7 +414,6 @@ class BoardWidget(Widget):
             except Exception:
                 pass
 
-        # 震动
         self._vibrator = None
         if config.vibrate:
             try:
@@ -399,13 +454,13 @@ class BoardWidget(Widget):
         self.status_label.color = color
 
     def on_key_down(self, window, key, scancode, codepoint, modifiers):
-        if key == 114:      # R
+        if key == 114:
             self.reset()
-        elif key == 117:    # U
+        elif key == 117:
             self.undo()
-        elif key == 115:    # S
+        elif key == 115:
             self.save_sgf()
-        elif key == 102:    # F
+        elif key == 102:
             self.toggle_fullscreen()
 
     def toggle_fullscreen(self):
@@ -443,7 +498,6 @@ class BoardWidget(Widget):
             for i in range(self.board_size):
                 Line(points=[ox + i * cs, oy, ox + i * cs, oy + cs * (self.board_size - 1)], width=1)
                 Line(points=[ox, oy + i * cs, ox + cs * (self.board_size - 1), oy + i * cs], width=1)
-            # 星位
             if self.board_size >= 13:
                 stars = [3, self.board_size // 2, self.board_size - 4]
                 for sr in stars:
@@ -454,13 +508,12 @@ class BoardWidget(Widget):
                 for sr, sc in [(m, m), (2, 2), (2, self.board_size - 3),
                                (self.board_size - 3, 2), (self.board_size - 3, self.board_size - 3)]:
                     Line(circle=(ox + sc * cs, oy + sr * cs, cs * 0.08), width=2)
-            # 坐标
             if config.show_coords:
+                fs = max(cs * 0.5, sp(8))
                 for i in range(self.board_size):
-                    self._draw_text(ox - cs * 0.7, oy + i * cs - cs * 0.35, str(i + 1), cs * 0.5, line_col)
-                    self._draw_text(ox + i * cs - cs * 0.3, oy - cs * 0.85, chr(ord('A') + i), cs * 0.5, line_col)
+                    self._draw_text(ox - cs * 0.7, oy + i * cs - cs * 0.35, str(i + 1), fs, line_col)
+                    self._draw_text(ox + i * cs - cs * 0.3, oy - cs * 0.85, chr(ord('A') + i), fs, line_col)
 
-            # 棋子
             now = time.time()
             for r in range(self.board_size):
                 for c in range(self.board_size):
@@ -472,7 +525,6 @@ class BoardWidget(Widget):
                         half = cs * 0.38
                         Rectangle(pos=(x - half, y - half), size=(half * 2, half * 2))
                     else:
-                        # 落子动画：半径由小变大
                         scale = 1.0
                         if (r, c) in self.piece_anim:
                             dt = now - self.piece_anim[(r, c)]
@@ -491,53 +543,45 @@ class BoardWidget(Widget):
                         step = self._get_step(r, c)
                         if step:
                             col = (0.9, 0.6, 0.1, 1) if self.board[r][c] == gc.BLACK else (0.1, 0.1, 0.1, 1)
-                            self._draw_text(x - cs * 0.25, y - cs * 0.35, str(step), cs * 0.5, col)
+                            self._draw_text(x - cs * 0.25, y - cs * 0.35, str(step), max(cs * 0.5, sp(8)), col)
 
-            # 最后一步高亮（脉冲）
             if self.last_move and not self.game_over:
                 r, c = self.last_move
                 rr = cs * (0.12 + 0.06 * math.sin(self.pulse_t * 6))
                 Color(1, 0.25, 0.1, 1)
                 Line(circle=(ox + c * cs, oy + r * cs, rr), width=2)
 
-            # 胜利高亮（脉冲）
             if self.winning_cells:
                 Color(1, 0.85, 0.1, 0.75 + 0.25 * math.sin(self.pulse_t * 5))
                 for r, c in self.winning_cells:
                     Line(circle=(ox + c * cs, oy + r * cs, cs * 0.46), width=3)
 
-            # 威胁点
             if config.show_threats and not self.game_over and self.history:
                 Color(1, 0.15, 0.15, 0.35)
                 enemy = gc.other(self.current_player) if not self.awaiting_ai else gc.BLACK
                 for (r, c) in gc.threat_points(self.board, self.board_size, enemy):
                     Line(circle=(ox + c * cs, oy + r * cs, cs * 0.3), width=1.5)
 
-            # AI 提示点
             if getattr(self, "hint_move", None) and not self.game_over:
                 r, c = self.hint_move
                 Color(0.2, 1.0, 0.3, 0.9)
                 Line(circle=(ox + c * cs, oy + r * cs, cs * 0.34), width=3)
                 Line(circle=(ox + c * cs, oy + r * cs, cs * 0.12), width=3)
 
-            # 彩带动画
             for p in self.confetti:
                 Color(p["color"][0], p["color"][1], p["color"][2], p["alpha"])
                 Triangle(points=[p["x"], p["y"], p["x"] + p["w"], p["y"],
                                  p["x"] + p["w"] / 2, p["y"] + p["h"]])
 
-        # 动画时钟
         if (self.piece_anim or self.winning_cells or self.confetti) and not self.anim_event:
             self.anim_event = Clock.schedule_interval(self._anim_tick, 1 / 30.0)
 
     def _anim_tick(self, dt):
         now = time.time()
         self.pulse_t += dt
-        # 清理完成动画
         for key in list(self.piece_anim.keys()):
             if now - self.piece_anim[key] > 0.2:
                 del self.piece_anim[key]
-        # 彩带物理
         alive = []
         for p in self.confetti:
             p["vy"] -= 300 * dt
@@ -629,7 +673,6 @@ class BoardWidget(Widget):
         self._pinch_start_dist = None
         if len(self._touches) == 0:
             self._drag_start = None
-            # 单击判定：无缩放操作且未拖动 → 落子
             if not was_pinch and not touch.is_double_tap:
                 self._try_tap(touch)
         return True
@@ -668,7 +711,6 @@ class BoardWidget(Widget):
             return
 
         if config.mode == "AI":
-            # 禁手预检（黑棋）
             if config.forbidden_enabled and gc.is_forbidden(self.board, self.board_size,
                                                             row, col, gc.BLACK):
                 self.play_sound("lose")
@@ -690,7 +732,7 @@ class BoardWidget(Widget):
 
         if config.mode == "ONLINE":
             if not self.my_turn:
-                self.set_status(self.tr("waiting") if False else "等待对方落子...", (1, 1, 1, 1))
+                self.set_status("等待对方落子...", (1, 1, 1, 1))
                 return
             if self._try_move(row, col, gc.BLACK):
                 self.network.send_move(row, col)
@@ -704,7 +746,6 @@ class BoardWidget(Widget):
             return
 
         if config.mode == "CHALLENGE":
-            # 人类执白防守
             if self._try_move(row, col, gc.WHITE):
                 self.hint_move = None
                 win, cells = gc.check_win(self.board, self.board_size, row, col,
@@ -734,14 +775,12 @@ class BoardWidget(Widget):
         self.redraw()
         self.play_sound("place")
         self.vibrate()
-        # 重置计时
         if config.timer_enabled:
             self.time_left = config.timer_seconds
             self.timer_running = True
         return True
 
     def _timer_player(self):
-        """计时对象：当前应该限时的玩家"""
         if config.mode == "AI":
             return gc.BLACK
         if config.mode == "DOUBLE":
@@ -765,12 +804,10 @@ class BoardWidget(Widget):
             if win:
                 self.finish_game(gc.WHITE, cells, ai_won=True)
                 return
-            # 超过步数限制 → 玩家胜
             if self.ai_steps >= self._challenge_win_in():
                 self.finish_game(gc.WHITE, None, challenge_pass=True)
                 return
-            self.set_status(self.tr("your_turn") if False else
-                            f"防守！AI 已走 {self.ai_steps}/{self._challenge_win_in()} 手",
+            self.set_status(f"防守！AI 已走 {self.ai_steps}/{self._challenge_win_in()} 手",
                             (1, 1, 1, 1))
             return
         pos = gc.ai_move(self.board, self.board_size, gc.WHITE, config.difficulty, config.ai_style)
@@ -813,7 +850,6 @@ class BoardWidget(Widget):
         self.redraw()
 
     def hint_autoplay(self):
-        """AI 代走：直接把提示点落下（人机模式黑方）"""
         if config.mode != "AI" or self.game_over or self.awaiting_ai:
             return
         pos = gc.ai_hint(self.board, self.board_size, gc.BLACK, config.difficulty, config.ai_style)
@@ -847,7 +883,6 @@ class BoardWidget(Widget):
         self.redraw()
         self.start_confetti()
 
-        # 结果：以“玩家”视角
         result = None
         info = {"moves": self.step_count,
                 "six": config.six_in_row,
@@ -884,13 +919,12 @@ class BoardWidget(Widget):
                 result, msg = "draw", self.tr("draw")
 
         if result == "win":
-            self.set_status(msg + " 🎉", (0.3, 1, 0.3, 1))
+            self.set_status(msg, (0.3, 1, 0.3, 1))
         elif result == "lose":
             self.set_status(msg, (1, 0.3, 0.3, 1))
         else:
             self.set_status(msg, (1, 1, 0, 1))
 
-        # 更新统计与成就
         stats = gc.load_stats(self.stats_path())
         unlocked = gc.record_game(stats, config.mode.lower(), result, info)
         gc.save_stats(self.stats_path(), stats)
@@ -902,11 +936,11 @@ class BoardWidget(Widget):
             self.save_game()
 
     def show_achievement(self, name, desc):
-        content = BoxLayout(orientation="vertical", padding=12, spacing=8)
-        content.add_widget(Label(text=self.tr("achievement", name=name),
-                                 font_name="Chinese", font_size=18, color=(1, 0.85, 0.2, 1)))
-        content.add_widget(Label(text=desc, font_name="Chinese", font_size=14))
-        popup = Popup(title="🏆", content=content, size_hint=(0.8, 0.35))
+        content = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(8))
+        content.add_widget(CJK(self.tr("achievement", name=name), 18, (1, 0.85, 0.2, 1),
+                               halign="center"))
+        content.add_widget(CJK(desc, 14, halign="center"))
+        popup = Popup(title="", content=content, size_hint=(0.85, 0.35))
         popup.open()
         Clock.schedule_once(lambda dt: popup.dismiss(), 2.2)
 
@@ -929,7 +963,6 @@ class BoardWidget(Widget):
             self.set_status(self.tr("no_undo"), (1, 0.5, 0.2, 1))
             return
         if config.mode == "CHALLENGE":
-            # 残局：撤销白方一手（黑方是 AI，自动撤销一手）
             if len(self.history) >= 2:
                 for _ in range(2):
                     r, c, who = self.history.pop()
@@ -943,7 +976,6 @@ class BoardWidget(Widget):
                 self.play_sound("undo")
                 self.set_status(self.tr("undo_done", n=max(0, config.undo_limit - self.undo_used)))
             return
-        # AI / 双人：撤销两步
         if len(self.history) >= 2:
             for _ in range(2):
                 r, c, who = self.history.pop()
@@ -988,7 +1020,6 @@ class BoardWidget(Widget):
         if self.replay_event:
             self.replay_event.cancel()
             self.replay_event = None
-        # 挑战模式：载入残局
         if config.mode == "CHALLENGE":
             board, size, who, win_in, hint = gc.challenge_board(self.challenge_idx)
             self.board = board
@@ -997,11 +1028,9 @@ class BoardWidget(Widget):
             data = gc.CHALLENGES[self.challenge_idx - 1]
             self.set_status(f"残局 {self.challenge_idx}/10 · {data['name']} · "
                             f"{self.tr('white')} 防守（AI {win_in} 手内取胜）", (1, 1, 0.6, 1))
-            # AI（黑）先手
             self.awaiting_ai = True
             Clock.schedule_once(self.ai_play, 0.4)
         elif config.mode == "AI" and config.ai_first:
-            # AI 先手：按开局库落第一子
             m = self.board_size // 2
             opening = config.opening
             if opening == "星位" and self.board_size >= 9:
@@ -1016,13 +1045,19 @@ class BoardWidget(Widget):
                 first = (m, m)
             self._try_move(first[0], first[1], gc.BLACK)
             self.current_player = gc.WHITE
-            self.set_status(self.tr("your_turn") if False else f"AI 先手 · {self.tr('white')} 轮到",
-                            (1, 1, 1, 1))
+            self.set_status(f"AI 先手 · {self.tr('white')} 轮到", (1, 1, 1, 1))
         else:
             self.current_player = gc.BLACK
             self.set_status(self.tr("new_game"), (1, 1, 1, 1))
         if config.timer_enabled:
             self.timer_running = True
+        # 通知 App 更新回放条可见性
+        try:
+            app = App.get_running_app()
+            if app and hasattr(app, "update_replay_bar"):
+                app.update_replay_bar()
+        except Exception:
+            pass
         self.redraw()
 
     # ---------- 棋谱 ----------
@@ -1055,7 +1090,13 @@ class BoardWidget(Widget):
             self.board = gc.make_board(self.board_size)
             self.history = []
             self.step_count = 0
-            self.set_status(f"回放：{len(moves)} 手 · ▶", (0.5, 0.9, 1, 1))
+            self.set_status(f"回放：{len(moves)} 手", (0.5, 0.9, 1, 1))
+            try:
+                app = App.get_running_app()
+                if app and hasattr(app, "update_replay_bar"):
+                    app.update_replay_bar()
+            except Exception:
+                pass
             self.redraw()
         except Exception as e:
             self.set_status("载入失败", (1, 0.3, 0.3, 1))
@@ -1125,9 +1166,6 @@ class BoardWidget(Widget):
             if loser:
                 self.set_status(self.tr("timeout"), (1, 0.2, 0.2, 1))
                 self.finish_game(gc.other(loser), None)
-        else:
-            # 由外部 label 显示，无需占用状态栏
-            pass
 
     # ---------- 自动保存 / 恢复 ----------
     def save_game(self):
@@ -1219,115 +1257,123 @@ class BoardWidget(Widget):
 # =========================
 class GomokuApp(App):
     def build(self):
+        top_inset, right_inset, bottom_inset, left_inset = get_insets()
+        self.top_inset = top_inset
         Window.clearcolor = (0.07, 0.07, 0.1, 1)
-        self.root_box = BoxLayout(orientation="vertical", padding=6, spacing=4)
+        self.root_box = BoxLayout(
+            orientation="vertical",
+            padding=[dp(4) + left_inset, dp(4) + bottom_inset,
+                     dp(4) + right_inset, dp(4) + top_inset],
+            spacing=dp(4))
 
         # 顶栏
-        top = BoxLayout(orientation="horizontal", size_hint=(1, None), height=34, spacing=6)
-        self.title_label = Label(text=self.tr("title"), font_name="Chinese",
-                                 font_size=22, bold=True, color=(1, 0.85, 0.3, 1))
+        top = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(40), spacing=dp(6))
+        self.title_label = CJK(self.tr("title"), 24, (1, 0.85, 0.3, 1), bold=True)
         top.add_widget(self.title_label)
         self.root_box.add_widget(top)
 
         # 状态栏
-        self.status_label = Label(text=self.tr("new_game"), font_name="Chinese",
-                                  font_size=16, size_hint=(1, None), height=28)
+        self.status_label = CJK(self.tr("new_game"), 17, size_hint=(1, None), height=dp(30))
         self.root_box.add_widget(self.status_label)
 
-        # 信息行：计时 + 步数 + 悔棋剩余
-        info = BoxLayout(orientation="horizontal", size_hint=(1, None), height=24, spacing=10)
-        self.timer_label = Label(text="", font_name="Chinese", font_size=14,
-                                 size_hint_x=0.33, halign="left")
-        self.move_label = Label(text="", font_name="Chinese", font_size=14,
-                                size_hint_x=0.34)
-        self.undo_label = Label(text="", font_name="Chinese", font_size=14,
-                                size_hint_x=0.33, halign="right")
+        # 信息行
+        info = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(26), spacing=dp(10))
+        self.timer_label = CJK("", 14, size_hint_x=0.33, halign="left")
+        self.move_label = CJK("", 14, size_hint_x=0.34)
+        self.undo_label = CJK("", 14, size_hint_x=0.33, halign="right")
         info.add_widget(self.timer_label)
         info.add_widget(self.move_label)
         info.add_widget(self.undo_label)
         self.root_box.add_widget(info)
 
         # 棋盘
-        self.board = BoardWidget(self.status_label, size_hint=(1, 0.62))
-        self.root_box.add_widget(self.board)
+        self.board = BoardWidget(self.status_label, size_hint=(1, 1))
+        self.root_box.add_widget(self.board, index=3)  # 棋盘占满剩余空间
 
         # 底部控制区（滚动）
-        panel = ScrollView(size_hint=(1, None), height=168, do_scroll_x=False)
-        grid = GridLayout(cols=4, spacing=5, size_hint_y=None)
+        panel = ScrollView(size_hint=(1, None), height=dp(208), do_scroll_x=False)
+        grid = GridLayout(cols=4, spacing=dp(6), padding=[dp(2), dp(2), dp(2), dp(2)],
+                          size_hint_y=None)
         grid.bind(minimum_height=grid.setter("height"))
-        grid.padding = [2, 2, 2, 2]
 
-        def mk_button(text, cb, down=False, group=None):
-            b = ToggleButton(text=text, font_name="Chinese", font_size=14,
-                             state="down" if down else "normal", group=group)
-            if group is None:
-                b = Button(text=text, font_name="Chinese", font_size=14)
+        def mk_toggle(text, cb, down=False, group=None):
+            b = ToggleButton(text=text, font_name="Chinese", font_size=sp(15),
+                             state="down" if down else "normal", group=group,
+                             size_hint_y=None, height=dp(46))
             b.bind(on_release=cb)
             return b
 
-        # 模式切换（ToggleButton 组）
-        self.mode_group = "mode"
-        b_ai = mk_button(self.tr("mode_ai"), lambda x: self.set_mode("AI"),
-                         down=(config.mode == "AI"), group=self.mode_group)
-        b_double = mk_button(self.tr("mode_double"), lambda x: self.set_mode("DOUBLE"),
-                             down=(config.mode == "DOUBLE"), group=self.mode_group)
-        b_challenge = mk_button(self.tr("mode_challenge"), lambda x: self.set_mode("CHALLENGE"),
-                                down=(config.mode == "CHALLENGE"), group=self.mode_group)
-        b_online = mk_button(self.tr("mode_online"), lambda x: self.online_click(),
-                             down=(config.mode == "ONLINE"), group=self.mode_group)
+        # 模式切换
+        b_ai = mk_toggle(self.tr("mode_ai"), lambda x: self.set_mode("AI"),
+                         down=(config.mode == "AI"), group="mode")
+        b_double = mk_toggle(self.tr("mode_double"), lambda x: self.set_mode("DOUBLE"),
+                             down=(config.mode == "DOUBLE"), group="mode")
+        b_challenge = mk_toggle(self.tr("mode_challenge"), lambda x: self.set_mode("CHALLENGE"),
+                                down=(config.mode == "CHALLENGE"), group="mode")
+        b_online = mk_toggle(self.tr("mode_online"), lambda x: self.online_click(),
+                             down=(config.mode == "ONLINE"), group="mode")
         grid.add_widget(b_ai)
         grid.add_widget(b_double)
         grid.add_widget(b_challenge)
         grid.add_widget(b_online)
 
-        grid.add_widget(Button(text=self.tr("restart"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.board.reset()))
-        grid.add_widget(Button(text=self.tr("undo"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.board.undo()))
-        grid.add_widget(Button(text=self.tr("hint") + " ▶", font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.board.show_hint()))
-        grid.add_widget(Button(text=self.tr("hint") + " ⚡", font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.board.hint_autoplay()))
-        grid.add_widget(Button(text=self.tr("settings"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.open_settings()))
-        grid.add_widget(Button(text=self.tr("stats"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.open_stats()))
-        grid.add_widget(Button(text="棋谱 ▸", font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.open_replay()))
-        grid.add_widget(Button(text=self.tr("challenge_sel"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.open_challenge_sel()))
-        grid.add_widget(Button(text="威胁", font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.toggle_threats()))
-        grid.add_widget(Button(text=self.tr("fullscreen"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.board.toggle_fullscreen()))
-        grid.add_widget(Button(text=self.tr("lang"), font_name="Chinese", font_size=14,
-                               on_release=lambda x: self.toggle_lang()))
-        grid.add_widget(Label(text="", font_name="Chinese"))
+        # 功能按钮
+        def add_btn(text, cb):
+            b = CJKBtn(text, 15)
+            b.bind(on_release=cb)
+            grid.add_widget(b)
+
+        add_btn(self.tr("restart"), lambda x: self.board.reset())
+        add_btn(self.tr("undo"), lambda x: self.board.undo())
+        add_btn(self.tr("hint"), lambda x: self.board.show_hint())
+        add_btn(self.tr("ai_move"), lambda x: self.board.hint_autoplay())
+        add_btn(self.tr("settings"), lambda x: self.open_settings())
+        add_btn(self.tr("stats"), lambda x: self.open_stats())
+        add_btn(self.tr("save_sgf"), lambda x: self.board.save_sgf())
+        add_btn(self.tr("challenge_sel"), lambda x: self.open_challenge_sel())
+        add_btn("威胁", lambda x: self.toggle_threats())
+        add_btn(self.tr("fullscreen"), lambda x: self.board.toggle_fullscreen())
+        add_btn(self.tr("lang"), lambda x: self.toggle_lang())
+        add_btn(self.tr("replay"), lambda x: self.open_replay())
 
         panel.add_widget(grid)
         self.root_box.add_widget(panel)
 
-        # 回放控制条
-        replay_bar = BoxLayout(orientation="horizontal", size_hint=(1, None), height=34, spacing=4)
-        replay_bar.add_widget(Button(text="⏮", font_size=16,
-                                     on_release=lambda x: self.board.replay_step(-1)))
-        replay_bar.add_widget(Button(text="▶/⏸", font_name="Chinese", font_size=14,
-                                     on_release=lambda x: self.board.replay_play_pause()))
-        replay_bar.add_widget(Button(text="⏭", font_size=16,
-                                     on_release=lambda x: self.board.replay_step(1)))
-        replay_bar.add_widget(Button(text="×2", font_name="Chinese", font_size=14,
-                                     on_release=lambda x: self.cycle_speed()))
-        self.root_box.add_widget(replay_bar)
+        # 回放控制条（默认隐藏，进入回放时显示）
+        replay_bar = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                               height=dp(44), spacing=dp(4))
+        rb1 = CJKBtn(self.tr("prev"), 13)
+        rb1.bind(on_release=lambda x: self.board.replay_step(-1))
+        rb2 = CJKBtn(self.tr("play"), 13)
+        rb2.bind(on_release=lambda x: self.board.replay_play_pause())
+        rb3 = CJKBtn(self.tr("next"), 13)
+        rb3.bind(on_release=lambda x: self.board.replay_step(1))
+        rb4 = CJKBtn(self.tr("speed") + " x2", 13)
+        rb4.bind(on_release=lambda x: self.cycle_speed())
+        replay_bar.add_widget(rb1)
+        replay_bar.add_widget(rb2)
+        replay_bar.add_widget(rb3)
+        replay_bar.add_widget(rb4)
+        self.replay_bar = replay_bar
+        self.replay_btns = (rb1, rb2, rb3, rb4)
+        self.root_box.add_widget(self.replay_bar)
+        self.update_replay_bar()
 
-        # 计时更新
         Clock.schedule_interval(self.tick_info, 0.5)
         self.board.start_timer()
 
-        # 恢复未完成对局
         if self.board.has_savegame():
             Clock.schedule_once(self.prompt_resume, 0.6)
 
         return self.root_box
+
+    def update_replay_bar(self):
+        """回放条仅在回放模式显示，避免“没反应”的按钮误导用户"""
+        visible = getattr(self.board, "replay_mode", False)
+        self.replay_bar.opacity = 1.0 if visible else 0.0
+        self.replay_bar.disabled = not visible
+        for b in self.replay_btns:
+            b.disabled = not visible
 
     def tr(self, key, **kw):
         s = TXT.get(config.lang, TXT["zh"]).get(key, TXT["zh"].get(key, key))
@@ -1370,173 +1416,144 @@ class GomokuApp(App):
     def cycle_speed(self):
         b = self.board
         b.replay_speed = {1.0: 2.0, 2.0: 4.0, 4.0: 0.5, 0.5: 1.0}[b.replay_speed]
+        self.replay_btns[3].text = self.tr("speed") + (" x2" if b.replay_speed == 2.0 else
+                                                       (" x4" if b.replay_speed == 4.0 else " x0.5" if b.replay_speed == 0.5 else " x1"))
         if b.replay_playing and b.replay_event:
             b.replay_event.cancel()
             b.replay_event = Clock.schedule_interval(b._replay_tick, 0.7 / b.replay_speed)
 
     # ---------- 弹窗 ----------
-    def _popup(self, title, content, size=(0.9, 0.75)):
-        p = Popup(title=title, content=content, size_hint=size, auto_dismiss=True)
+    def _popup(self, title, content, size=(0.92, 0.8)):
+        box = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(6))
+        box.add_widget(CJK(title, 18, (1, 0.9, 0.4, 1), size_hint=(1, None), height=dp(32)))
+        box.add_widget(content)
+        p = Popup(title="", content=box, size_hint=size, auto_dismiss=True)
+        self._last_popup = p
         p.open()
         return p
 
     def open_settings(self):
         b = self.board
-        content = BoxLayout(orientation="vertical", padding=10, spacing=6)
+        content = BoxLayout(orientation="vertical", padding=dp(4), spacing=dp(6))
         sc = ScrollView()
-        gl = GridLayout(cols=2, spacing=8, size_hint_y=None, height=520)
+        gl = GridLayout(cols=2, spacing=dp(8), size_hint_y=None)
         gl.bind(minimum_height=gl.setter("height"))
 
         def label(t):
-            return Label(text=t, font_name="Chinese", font_size=14, halign="left",
-                         size_hint_x=0.5)
+            return CJK(t, 15, halign="left", size_hint_x=0.5)
 
-        # 棋盘尺寸
+        def spinner(values, value, cb):
+            s = Spinner(text=value, values=values, font_name="Chinese",
+                        font_size=sp(15), size_hint_y=None, height=dp(44))
+            s.bind(text=lambda spn, v: cb(v))
+            return s
+
+        def toggle(text, value, cb):
+            t = ToggleButton(text=text, state="down" if value else "normal",
+                             font_name="Chinese", font_size=sp(15),
+                             size_hint_y=None, height=dp(44))
+            t.bind(on_release=lambda x: cb(t))
+            return t
+
         gl.add_widget(label("棋盘尺寸"))
-        sz = Spinner(text=str(config.board_size), values=[str(v) for v in gc.BOARD_SIZES],
-                     font_name="Chinese", font_size=14)
-        sz.bind(text=lambda s, v: setattr(config, "board_size", int(v)))
-        gl.add_widget(sz)
-
-        # 难度
+        gl.add_widget(spinner([str(v) for v in gc.BOARD_SIZES], str(config.board_size),
+                              lambda v: setattr(config, "board_size", int(v))))
         gl.add_widget(label("AI 难度"))
-        diff = Spinner(text=config.difficulty, values=["低", "中", "高"],
-                       font_name="Chinese", font_size=14)
-        diff.bind(text=lambda s, v: setattr(config, "difficulty", v))
-        gl.add_widget(diff)
-
-        # AI 风格
+        gl.add_widget(spinner(["低", "中", "高"], config.difficulty,
+                              lambda v: setattr(config, "difficulty", v)))
         gl.add_widget(label("AI 风格"))
-        style = Spinner(text=config.ai_style, values=["进攻", "防守", "平衡"],
-                        font_name="Chinese", font_size=14)
-        style.bind(text=lambda s, v: setattr(config, "ai_style", v))
-        gl.add_widget(style)
-
-        # 主题
+        gl.add_widget(spinner(["进攻", "防守", "平衡"], config.ai_style,
+                              lambda v: setattr(config, "ai_style", v)))
         gl.add_widget(label("棋盘主题"))
-        theme = Spinner(text=config.theme, values=list(THEMES.keys()),
-                        font_name="Chinese", font_size=14)
-        theme.bind(text=lambda s, v: (setattr(config, "theme", v), b.redraw()))
-        gl.add_widget(theme)
-
-        # 棋子风格
+        gl.add_widget(spinner(list(THEMES.keys()), config.theme,
+                              lambda v: (setattr(config, "theme", v), b.redraw())))
         gl.add_widget(label("棋子风格"))
-        piece = Spinner(text=config.piece_style, values=["圆形", "方块", "序号"],
-                        font_name="Chinese", font_size=14)
-        piece.bind(text=lambda s, v: (setattr(config, "piece_style", v), b.redraw()))
-        gl.add_widget(piece)
+        gl.add_widget(spinner(["圆形", "方块", "序号"], config.piece_style,
+                              lambda v: (setattr(config, "piece_style", v), b.redraw())))
 
-        # 禁手
+        def forbid_cb(t):
+            config.forbidden_enabled = not config.forbidden_enabled
+            t.text = "开" if config.forbidden_enabled else "关"
         gl.add_widget(label("禁手规则（黑棋）"))
-        forb = ToggleButton(text="开" if config.forbidden_enabled else "关",
-                            state="down" if config.forbidden_enabled else "normal",
-                            font_name="Chinese", font_size=14)
-        forb.bind(on_release=lambda x: (setattr(config, "forbidden_enabled",
-                                                not config.forbidden_enabled),
-                                        setattr(forb, "text",
-                                                "开" if config.forbidden_enabled else "关")))
-        gl.add_widget(forb)
+        gl.add_widget(toggle("开" if config.forbidden_enabled else "关",
+                             config.forbidden_enabled, forbid_cb))
 
-        # 六子棋
+        def six_cb(t):
+            config.six_in_row = not config.six_in_row
+            t.text = "开" if config.six_in_row else "关"
         gl.add_widget(label("六子棋模式"))
-        six = ToggleButton(text="开" if config.six_in_row else "关",
-                           state="down" if config.six_in_row else "normal",
-                           font_name="Chinese", font_size=14)
-        six.bind(on_release=lambda x: (setattr(config, "six_in_row", not config.six_in_row),
-                                       setattr(six, "text", "开" if config.six_in_row else "关")))
-        gl.add_widget(six)
+        gl.add_widget(toggle("开" if config.six_in_row else "关", config.six_in_row, six_cb))
 
-        # 计时
+        def timer_cb(t):
+            self.cycle_timer(t, b)
         gl.add_widget(label("每步限时"))
-        timer = ToggleButton(text=f"{config.timer_seconds}s"
-                                  if config.timer_enabled else "关",
-                             state="down" if config.timer_enabled else "normal",
-                             font_name="Chinese", font_size=14)
-        timer.bind(on_release=lambda x: self.cycle_timer(timer, b))
-        gl.add_widget(timer)
+        gl.add_widget(toggle(f"{config.timer_seconds}秒" if config.timer_enabled else "关",
+                             config.timer_enabled, timer_cb))
 
-        # 悔棋次数
         gl.add_widget(label("悔棋次数（0=禁止）"))
+        und_box = BoxLayout(orientation="horizontal", spacing=dp(6))
         und = Slider(min=0, max=10, step=1, value=config.undo_limit)
-        und_label = Label(text=str(config.undo_limit), font_name="Chinese", font_size=14)
+        und_label = CJK(str(config.undo_limit), 15)
         und.bind(value=lambda s, v: (setattr(config, "undo_limit", int(v)),
                                      setattr(und_label, "text", str(int(v)))))
-        gl.add_widget(und)
-        gl.add_widget(und_label)
+        und_box.add_widget(und)
+        und_box.add_widget(und_label)
+        gl.add_widget(und_box)
 
-        # AI 先手
+        def aif_cb(t):
+            config.ai_first = not config.ai_first
+            t.text = "开" if config.ai_first else "关"
         gl.add_widget(label("AI 先手"))
-        aif = ToggleButton(text="开" if config.ai_first else "关",
-                           state="down" if config.ai_first else "normal",
-                           font_name="Chinese", font_size=14)
-        aif.bind(on_release=lambda x: (setattr(config, "ai_first", not config.ai_first),
-                                       setattr(aif, "text", "开" if config.ai_first else "关")))
-        gl.add_widget(aif)
+        gl.add_widget(toggle("开" if config.ai_first else "关", config.ai_first, aif_cb))
 
-        # 开局
         gl.add_widget(label("开局（AI先手）"))
-        op = Spinner(text=config.opening, values=["天元", "星位", "随机"],
-                     font_name="Chinese", font_size=14)
-        op.bind(text=lambda s, v: setattr(config, "opening", v))
-        gl.add_widget(op)
+        gl.add_widget(spinner(["天元", "星位", "随机"], config.opening,
+                              lambda v: setattr(config, "opening", v)))
 
-        # 音效
+        def snd_cb(t):
+            config.sound_enabled = not config.sound_enabled
+            t.text = "开" if config.sound_enabled else "关"
         gl.add_widget(label("音效"))
-        snd = ToggleButton(text="开" if config.sound_enabled else "关",
-                           state="down" if config.sound_enabled else "normal",
-                           font_name="Chinese", font_size=14)
-        snd.bind(on_release=lambda x: (setattr(config, "sound_enabled",
-                                               not config.sound_enabled),
-                                       setattr(snd, "text",
-                                               "开" if config.sound_enabled else "关")))
-        gl.add_widget(snd)
+        gl.add_widget(toggle("开" if config.sound_enabled else "关", config.sound_enabled, snd_cb))
 
-        # 坐标
+        def coord_cb(t):
+            config.show_coords = not config.show_coords
+            t.text = "开" if config.show_coords else "关"
+            b.redraw()
         gl.add_widget(label("坐标显示"))
-        coord = ToggleButton(text="开" if config.show_coords else "关",
-                             state="down" if config.show_coords else "normal",
-                             font_name="Chinese", font_size=14)
-        coord.bind(on_release=lambda x: (setattr(config, "show_coords",
-                                                 not config.show_coords),
-                                         setattr(coord, "text",
-                                                 "开" if config.show_coords else "关"),
-                                         b.redraw()))
-        gl.add_widget(coord)
+        gl.add_widget(toggle("开" if config.show_coords else "关", config.show_coords, coord_cb))
 
-        # 网格颜色
         gl.add_widget(label("网格颜色"))
-        gcol = Spinner(text="默认", values=["默认", "红", "绿", "蓝", "白"],
-                       font_name="Chinese", font_size=14)
         gmap = {"默认": None, "红": (0.8, 0.1, 0.1, 1), "绿": (0.1, 0.6, 0.2, 1),
                 "蓝": (0.1, 0.3, 0.8, 1), "白": (0.9, 0.9, 0.9, 1)}
-        gcol.bind(text=lambda s, v: (setattr(config, "grid_color", gmap.get(v)),
-                                     b.redraw()))
-        gl.add_widget(gcol)
+        gl.add_widget(spinner(list(gmap.keys()), "默认",
+                              lambda v: (setattr(config, "grid_color", gmap.get(v)), b.redraw())))
 
-        # 自动保存
+        def autos_cb(t):
+            config.auto_save = not config.auto_save
+            t.text = "开" if config.auto_save else "关"
         gl.add_widget(label("自动保存/恢复"))
-        autos = ToggleButton(text="开" if config.auto_save else "关",
-                             state="down" if config.auto_save else "normal",
-                             font_name="Chinese", font_size=14)
-        autos.bind(on_release=lambda x: (setattr(config, "auto_save",
-                                                 not config.auto_save),
-                                         setattr(autos, "text",
-                                                 "开" if config.auto_save else "关")))
-        gl.add_widget(autos)
+        gl.add_widget(toggle("开" if config.auto_save else "关", config.auto_save, autos_cb))
 
-        # 保存按钮
-        btn_row = BoxLayout(size_hint_y=None, height=44, spacing=8)
-        btn_row.add_widget(Button(text="✔ 保存设置", font_name="Chinese",
-                                  on_release=lambda x: (config.save(), content.parent.dismiss()
-                                                        if hasattr(content.parent, "dismiss") else None)))
-        btn_row.add_widget(Button(text="✔ 应用到新局", font_name="Chinese",
-                                  on_release=lambda x: (config.save(), b.reset())))
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        save_btn = CJKBtn(self.tr("ok"), 15)
+        save_btn.bind(on_release=lambda x: (config.save(), self._dismiss_last()))
+        apply_btn = CJKBtn(self.tr("apply"), 15)
+        apply_btn.bind(on_release=lambda x: (config.save(), b.reset()))
+        btn_row.add_widget(save_btn)
+        btn_row.add_widget(apply_btn)
         gl.add_widget(btn_row)
 
         sc.add_widget(gl)
         content.add_widget(sc)
-        pop = Popup(title=self.tr("settings"), content=content, size_hint=(0.92, 0.85))
-        pop.open()
+        self._popup(self.tr("settings"), content, (0.94, 0.88))
+
+    def _dismiss_last(self):
+        try:
+            if getattr(self, "_last_popup", None):
+                self._last_popup.dismiss()
+        except Exception:
+            pass
 
     def cycle_timer(self, btn, board):
         if not config.timer_enabled:
@@ -1546,12 +1563,12 @@ class GomokuApp(App):
         else:
             order = {10: 30, 30: 60, 60: 120, 120: 10}
             config.timer_seconds = order.get(config.timer_seconds, 10)
-        btn.text = f"{config.timer_seconds}s"
+        btn.text = f"{config.timer_seconds}秒"
         board.time_left = config.timer_seconds
 
     def open_stats(self):
         stats = gc.load_stats(self.board.stats_path())
-        content = BoxLayout(orientation="vertical", padding=10, spacing=4)
+        content = BoxLayout(orientation="vertical", padding=dp(4), spacing=dp(4))
         total = stats["total"]
         lines = [
             f"总场次: {total['win'] + total['lose'] + total['draw']}   "
@@ -1565,48 +1582,48 @@ class GomokuApp(App):
             m = stats["modes"][mode]
             lines.append(f"{name}: {m['win']}胜 {m['lose']}负 {m['draw']}平")
         lines.append("")
-        lines.append("🏆 成就")
+        lines.append("成就")
         for a in gc.ACHIEVEMENTS:
-            got = "✅" if a["id"] in stats["achievements"] else "🔒"
-            lines.append(f"{got} {a['name']} —— {a['desc']}")
+            got = "已解锁" if a["id"] in stats["achievements"] else "未解锁"
+            lines.append(f"[{got}] {a['name']} - {a['desc']}")
         gl = GridLayout(cols=1, size_hint_y=None)
         gl.bind(minimum_height=gl.setter("height"))
         for line in lines:
-            gl.add_widget(Label(text=line, font_name="Chinese", font_size=14,
-                                halign="left", size_hint_y=None, height=26))
+            gl.add_widget(CJK(line, 14, halign="left", size_hint_y=None, height=dp(28)))
         sc = ScrollView()
         sc.add_widget(gl)
         content.add_widget(sc)
-        self._popup(self.tr("stats"), content, (0.92, 0.8))
+        self._popup(self.tr("stats"), content, (0.94, 0.85))
 
     def open_replay(self):
         d = self.board._data_dir()
         sgf_files = [f for f in os.listdir(d) if f.endswith(".sgf")] if os.path.isdir(d) else []
-        content = BoxLayout(orientation="vertical", padding=10, spacing=6)
+        content = BoxLayout(orientation="vertical", padding=dp(4), spacing=dp(6))
         if sgf_files:
             for f in sorted(sgf_files)[-10:]:
-                content.add_widget(Button(text=f, font_name="Chinese", font_size=13,
-                                          on_release=lambda x, fn=f: self._load_replay(fn)))
+                b = CJKBtn(f, 13, size=(dp(360), dp(40)))
+                b.bind(on_release=lambda x, fn=f: self._load_replay(fn))
+                content.add_widget(b)
         else:
-            content.add_widget(Label(text="暂无棋谱，先保存一局吧", font_name="Chinese"))
-        self._popup("棋谱回放", content, (0.9, 0.6))
+            content.add_widget(CJK("暂无棋谱，先保存一局吧", 15))
+        self._popup(self.tr("replay"), content, (0.94, 0.6))
 
     def _load_replay(self, fn):
         self.board.load_sgf_replay(os.path.join(self.board._data_dir(), fn))
 
     def open_challenge_sel(self):
-        content = BoxLayout(orientation="vertical", padding=10, spacing=6)
+        content = BoxLayout(orientation="vertical", padding=dp(4), spacing=dp(6))
         sc = ScrollView()
-        gl = GridLayout(cols=2, spacing=6, size_hint_y=None)
+        gl = GridLayout(cols=2, spacing=dp(6), size_hint_y=None)
         gl.bind(minimum_height=gl.setter("height"))
         for c in gc.CHALLENGES:
-            b = Button(text=f"{c['id']}. {c['name']}\n{c['desc']}",
-                       font_name="Chinese", font_size=13, size_hint_y=None, height=64)
+            b = CJKBtn(f"{c['id']}. {c['name']}\n{c['desc']}", 13,
+                       size=(dp(170), dp(64)))
             b.bind(on_release=lambda x, idx=c["id"]: self._start_challenge(idx))
             gl.add_widget(b)
         sc.add_widget(gl)
         content.add_widget(sc)
-        self._popup(self.tr("challenge_sel"), content, (0.92, 0.8))
+        self._popup(self.tr("challenge_sel"), content, (0.94, 0.85))
 
     def _start_challenge(self, idx):
         config.mode = "CHALLENGE"
@@ -1616,10 +1633,10 @@ class GomokuApp(App):
 
     # ---------- 联机 ----------
     def online_click(self):
-        content = BoxLayout(orientation="vertical", padding=12, spacing=8)
+        content = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(6))
         ip_input = TextInput(hint_text=self.tr("enter_ip"), font_name="Chinese",
-                             multiline=False, size_hint_y=None, height=40)
-        ip_label = Label(text="", font_name="Chinese", font_size=13)
+                             multiline=False, size_hint_y=None, height=dp(40))
+        ip_label = CJK("", 13)
 
         def do_create(x):
             ip = self.board.start_network(True)
@@ -1635,22 +1652,23 @@ class GomokuApp(App):
             config.mode = "ONLINE"
             self.board.reset()
 
-        btn_row = BoxLayout(size_hint_y=None, height=44, spacing=8)
-        btn_row.add_widget(Button(text=self.tr("create_room"), font_name="Chinese",
-                                  on_release=do_create))
-        btn_row.add_widget(Button(text=self.tr("join_room"), font_name="Chinese",
-                                  on_release=do_join))
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        b1 = CJKBtn(self.tr("create_room"), 14)
+        b1.bind(on_release=do_create)
+        b2 = CJKBtn(self.tr("join_room"), 14)
+        b2.bind(on_release=do_join)
+        btn_row.add_widget(b1)
+        btn_row.add_widget(b2)
         content.add_widget(btn_row)
         content.add_widget(ip_input)
         content.add_widget(ip_label)
-        # 聊天
         chat_scroll = ScrollView(size_hint=(1, 0.5))
         chat_gl = GridLayout(cols=1, size_hint_y=None)
         chat_gl.bind(minimum_height=chat_gl.setter("height"))
         chat_scroll.add_widget(chat_gl)
         content.add_widget(chat_scroll)
         chat_input = TextInput(hint_text=self.tr("chat_placeholder"), font_name="Chinese",
-                               multiline=False, size_hint_y=None, height=36)
+                               multiline=False, size_hint_y=None, height=dp(36))
         content.add_widget(chat_input)
 
         def send_chat(x):
@@ -1661,21 +1679,20 @@ class GomokuApp(App):
                 chat_input.text = ""
             chat_gl.clear_widgets()
             for line in self.board.chat_lines[-20:]:
-                chat_gl.add_widget(Label(text=line, font_name="Chinese", font_size=13,
-                                         size_hint_y=None, height=24, halign="left"))
+                chat_gl.add_widget(CJK(line, 13, size_hint_y=None, height=dp(24),
+                                       halign="left"))
 
         def refresh_chat(dt):
             chat_gl.clear_widgets()
             for line in self.board.chat_lines[-20:]:
-                chat_gl.add_widget(Label(text=line, font_name="Chinese", font_size=13,
-                                         size_hint_y=None, height=24, halign="left"))
-            if self.board.chat_lines:
-                pass
+                chat_gl.add_widget(CJK(line, 13, size_hint_y=None, height=dp(24),
+                                       halign="left"))
 
         chat_input.bind(on_text_validate=send_chat)
-        content.add_widget(Button(text=self.tr("send"), font_name="Chinese",
-                                  size_hint_y=None, height=40, on_release=send_chat))
-        pop = Popup(title=self.tr("online"), content=content, size_hint=(0.92, 0.85))
+        send_btn = CJKBtn(self.tr("send"), 14, size=(dp(120), dp(40)))
+        send_btn.bind(on_release=send_chat)
+        content.add_widget(send_btn)
+        pop = Popup(title="", content=content, size_hint=(0.94, 0.88))
         Clock.schedule_interval(refresh_chat, 1.0)
         pop.bind(on_dismiss=lambda x: Clock.unschedule(refresh_chat))
         pop.open()
@@ -1695,17 +1712,18 @@ class GomokuApp(App):
         def do_discard(x):
             self.board.clear_savegame()
 
-        content = BoxLayout(orientation="vertical", padding=12, spacing=10)
-        content.add_widget(Label(text=self.tr("resume"), font_name="Chinese", font_size=16))
-        row = BoxLayout(spacing=10, size_hint_y=None, height=44)
-        row.add_widget(Button(text=self.tr("resume_yes"), font_name="Chinese",
-                              on_release=do_resume))
-        row.add_widget(Button(text=self.tr("resume_no"), font_name="Chinese",
-                              on_release=do_discard))
+        content = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
+        content.add_widget(CJK(self.tr("resume"), 17))
+        row = BoxLayout(spacing=dp(10), size_hint_y=None, height=dp(46))
+        b1 = CJKBtn(self.tr("resume_yes"), 15)
+        b1.bind(on_release=do_resume)
+        b2 = CJKBtn(self.tr("resume_no"), 15)
+        b2.bind(on_release=do_discard)
+        row.add_widget(b1)
+        row.add_widget(b2)
         content.add_widget(row)
-        self._popup("", content, (0.85, 0.35))
+        self._popup("", content, (0.88, 0.38))
 
-    # 生命周期：自动保存
     def on_pause(self):
         self.board.save_game()
         return True
